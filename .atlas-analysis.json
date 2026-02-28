@@ -1,0 +1,186 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Decart AI SDK",
+  "projectDescription": "JavaScript SDK for Decart's AI-powered real-time video transformation and generation models",
+  "theme": "palm",
+  "primaryColor": "#8B5CF6",
+  "lightColor": "#A78BFA",
+  "darkColor": "#6D28D9",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/client",
+              "concepts/models",
+              "concepts/authentication"
+            ]
+          },
+          {
+            "group": "Real-time API",
+            "pages": [
+              "realtime/overview",
+              "realtime/connection",
+              "realtime/state-management",
+              "realtime/events"
+            ]
+          },
+          {
+            "group": "Queue API",
+            "pages": [
+              "queue/overview",
+              "queue/submit",
+              "queue/polling",
+              "queue/status"
+            ]
+          },
+          {
+            "group": "Process API",
+            "pages": [
+              "process/overview",
+              "process/synchronous-generation"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/react-integration",
+              "guides/nextjs-integration",
+              "guides/server-side",
+              "guides/proxy-setup",
+              "guides/error-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Client",
+            "pages": [
+              "api/create-client",
+              "api/client-options"
+            ]
+          },
+          {
+            "group": "Real-time Client",
+            "pages": [
+              "api/realtime/connect",
+              "api/realtime/set-prompt",
+              "api/realtime/set-state",
+              "api/realtime/disconnect",
+              "api/realtime/events"
+            ]
+          },
+          {
+            "group": "Queue Client",
+            "pages": [
+              "api/queue/submit",
+              "api/queue/submit-and-poll",
+              "api/queue/status",
+              "api/queue/result"
+            ]
+          },
+          {
+            "group": "Process Client",
+            "pages": [
+              "api/process/generate"
+            ]
+          },
+          {
+            "group": "Tokens Client",
+            "pages": [
+              "api/tokens/create"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/realtime-models",
+              "api/models/video-models",
+              "api/models/image-models"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types/model-state",
+              "api/types/connection-state",
+              "api/types/job-status",
+              "api/types/errors"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Real-time Examples",
+            "pages": [
+              "examples/react-vite",
+              "examples/nextjs-realtime"
+            ]
+          },
+          {
+            "group": "Queue Examples",
+            "pages": [
+              "examples/video-generation",
+              "examples/image-to-video"
+            ]
+          },
+          {
+            "group": "Server Examples",
+            "pages": [
+              "examples/express-api",
+              "examples/hono-edge"
+            ]
+          },
+          {
+            "group": "Proxy Examples",
+            "pages": [
+              "examples/express-proxy",
+              "examples/nextjs-proxy"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time video transformation via WebRTC",
+    "Queue-based async video generation",
+    "Synchronous image generation",
+    "Multiple AI models (Mirage, Lucy)",
+    "Client token management",
+    "Proxy mode for client-side usage",
+    "TypeScript support with full type safety"
+  ],
+  "publicApiSurface": [
+    "createDecartClient()",
+    "client.realtime.connect()",
+    "client.queue.submit()",
+    "client.queue.submitAndPoll()",
+    "client.process()",
+    "client.tokens.create()",
+    "models.realtime()",
+    "models.video()",
+    "models.image()",
+    "RealTimeClient",
+    "QueueClient",
+    "ProcessClient",
+    "TokensClient"
+  ]
+}
