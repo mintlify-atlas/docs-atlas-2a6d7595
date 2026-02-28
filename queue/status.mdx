@@ -1,0 +1,332 @@
+---
+title: 'Job Status & Error Handling'
+description: 'Learn how to check job status and handle errors'
+---
+
+Understanding job status values and proper error handling is essential for building robust applications with the Queue API.
+
+## Job Status Values
+
+Every job progresses through a series of states:
+
+```typescript
+type JobStatus = "pending" | "processing" | "completed" | "failed";
+```
+
+### Status Lifecycle
+
+<Steps>
+  <Step title="pending">
+    Job is queued and waiting to start. This is the initial state after submission.
+  </Step>
+  <Step title="processing">
+    Job is actively being processed by the backend. This is where the actual video generation happens.
+  </Step>
+  <Step title="completed">
+    Job finished successfully. The result video is ready to download.
+  </Step>
+  <Step title="failed">
+    Job failed during processing. Check the error message for details.
+  </Step>
+</Steps>
+
+## Checking Job Status
+
+Use `client.queue.status()` to check the current state of a job:
+
+```typescript
+import { createDecartClient } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const status = await client.queue.status("job_abc123");
+
+console.log("Job ID:", status.job_id);
+console.log("Status:", status.status);
+```
+
+### Response Type
+
+```typescript
+type JobStatusResponse = {
+  job_id: string;   // Unique job identifier
+  status: JobStatus;  // Current status
+};
+```
+
+## Retrieving Results
+
+Once a job reaches `"completed"` status, retrieve the result:
+
+```typescript
+const status = await client.queue.status(jobId);
+
+if (status.status === "completed") {
+  // Download the video
+  const videoBlob = await client.queue.result(jobId);
+  
+  // Save to file (Node.js)
+  const arrayBuffer = await videoBlob.arrayBuffer();
+  await fs.writeFile("output.mp4", Buffer.from(arrayBuffer));
+  
+  // Or create object URL (browser)
+  const url = URL.createObjectURL(videoBlob);
+  videoElement.src = url;
+}
+```
+
+<Warning>
+  Only call `client.queue.result()` when the job status is `"completed"`. Calling it on incomplete jobs will result in an error.
+</Warning>
+
+## Error Handling
+
+### Failed Jobs
+
+When using `submitAndPoll()`, check the result status:
+
+```typescript
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful sunset",
+});
+
+if (result.status === "completed") {
+  console.log("Success! Video size:", result.data.size, "bytes");
+  // Process the video blob
+  displayVideo(result.data);
+} else if (result.status === "failed") {
+  console.error("Job failed:", result.error);
+  // Show error to user
+  showError(`Video generation failed: ${result.error}`);
+}
+```
+
+### Manual Status Checks
+
+When polling manually:
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "Mountain landscape",
+});
+
+let status = job.status;
+while (status === "pending" || status === "processing") {
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  const statusResponse = await client.queue.status(job.job_id);
+  status = statusResponse.status;
+}
+
+if (status === "completed") {
+  const video = await client.queue.result(job.job_id);
+  console.log("Success!");
+} else if (status === "failed") {
+  console.error("Job failed");
+  // Implement retry logic, notify user, etc.
+}
+```
+
+### Validation Errors
+
+Input validation errors occur before job submission:
+
+```typescript
+try {
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "",  // Invalid: empty string
+  });
+} catch (error) {
+  console.error("Validation error:", error.message);
+  // Example output:
+  // "Invalid inputs for lucy-pro-t2v: String must contain at least 1 character(s)"
+}
+```
+
+Common validation errors:
+- Empty or too long prompts (max 1000 characters)
+- Invalid file inputs (wrong format, inaccessible URL)
+- Missing required parameters
+- Invalid parameter combinations (e.g., both `prompt` and `reference_image` for `lucy-restyle-v2v`)
+
+### Network Errors
+
+Handle network and API errors:
+
+```typescript
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "Beautiful landscape",
+  });
+  
+  if (result.status === "completed") {
+    handleSuccess(result.data);
+  } else {
+    handleJobFailure(result.error);
+  }
+} catch (error) {
+  // Network error, auth error, or other exception
+  console.error("Request failed:", error.message);
+  
+  if (error.message.includes("401")) {
+    showError("Invalid API key");
+  } else if (error.message.includes("network")) {
+    showError("Network error - please check your connection");
+  } else {
+    showError("An unexpected error occurred");
+  }
+}
+```
+
+## Comprehensive Error Handling Example
+
+```typescript
+import { createDecartClient, models } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+async function generateVideo(prompt: string) {
+  try {
+    console.log("Submitting job...");
+    
+    const result = await client.queue.submitAndPoll({
+      model: models.video("lucy-pro-t2v"),
+      prompt,
+      onStatusChange: (job) => {
+        console.log(`[${job.job_id}] Status: ${job.status}`);
+        
+        // Update UI based on status
+        if (job.status === "pending") {
+          showMessage("Job queued, waiting to start...");
+        } else if (job.status === "processing") {
+          showMessage("Generating video...");
+        }
+      },
+    });
+    
+    // Check result
+    if (result.status === "completed") {
+      console.log("✓ Video generated successfully");
+      console.log("  Size:", result.data.size, "bytes");
+      console.log("  Type:", result.data.type);
+      
+      // Save or display the video
+      const arrayBuffer = await result.data.arrayBuffer();
+      await fs.writeFile("output.mp4", Buffer.from(arrayBuffer));
+      
+      return { success: true, video: result.data };
+    } else {
+      console.error("✗ Job failed:", result.error);
+      console.error("  Job ID:", result.job_id);
+      
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    // Handle validation and network errors
+    console.error("✗ Request failed:", error.message);
+    
+    if (error.message.includes("Invalid inputs")) {
+      console.error("  Fix your input parameters");
+    } else if (error.message === "Polling aborted") {
+      console.error("  Request was cancelled");
+    } else {
+      console.error("  Check your network connection and API key");
+    }
+    
+    return { success: false, error: error.message };
+  }
+}
+
+// Usage
+const result = await generateVideo("A serene mountain lake at dawn");
+
+if (result.success) {
+  console.log("Video is ready!");
+} else {
+  console.log("Failed to generate video:", result.error);
+}
+```
+
+## Timeout Behavior
+
+<Info>
+  The backend automatically fails jobs that take longer than 10 minutes. When a job times out,
+  its status changes to `"failed"`. You don't need to implement your own timeout logic.
+</Info>
+
+If you want to cancel polling before the backend timeout:
+
+```typescript
+const controller = new AbortController();
+
+// Cancel after 5 minutes
+setTimeout(() => controller.abort(), 5 * 60 * 1000);
+
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "Complex scene with many elements",
+    signal: controller.signal,
+  });
+} catch (error) {
+  if (error.message === "Polling aborted") {
+    console.log("Cancelled polling after 5 minutes");
+  }
+}
+```
+
+## Retry Strategies
+
+Implement retry logic for failed jobs:
+
+```typescript
+async function generateVideoWithRetry(prompt: string, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`Attempt ${attempt}/${maxRetries}`);
+    
+    const result = await client.queue.submitAndPoll({
+      model: models.video("lucy-pro-t2v"),
+      prompt,
+    });
+    
+    if (result.status === "completed") {
+      return { success: true, data: result.data };
+    }
+    
+    console.warn(`Attempt ${attempt} failed:`, result.error);
+    
+    // Wait before retrying (exponential backoff)
+    if (attempt < maxRetries) {
+      const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+      console.log(`Waiting ${delay}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  return { success: false, error: "Max retries exceeded" };
+}
+
+// Usage
+const result = await generateVideoWithRetry("A magical forest scene");
+if (result.success) {
+  console.log("Success after retries!");
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="book" href="/queue/overview">
+    Review Queue API concepts and workflow
+  </Card>
+  <Card title="Submit Jobs" icon="paper-plane" href="/queue/submit">
+    Learn how to submit jobs for different models
+  </Card>
+</CardGroup>

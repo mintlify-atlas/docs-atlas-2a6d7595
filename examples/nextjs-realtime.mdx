@@ -1,0 +1,322 @@
+---
+title: Next.js Real-time
+description: Build a secure real-time video app with Next.js using client tokens
+---
+
+This example demonstrates how to build a secure real-time video transformation application using Next.js. It uses the App Router with client tokens to keep your API key secure on the server.
+
+## What You'll Build
+
+A Next.js application that:
+- Issues short-lived client tokens from a server API route
+- Uses client tokens in the browser to connect to Decart's real-time API
+- Captures and transforms webcam video in real-time
+- Never exposes your API key to the client
+
+## Prerequisites
+
+- Node.js 18 or higher
+- A Decart API key
+- A webcam for testing
+
+## Setup
+
+<Steps>
+  <Step title="Clone and navigate to the example">
+    ```bash
+    git clone https://github.com/decartai/sdk
+    cd sdk/examples/nextjs-realtime
+    ```
+  </Step>
+
+  <Step title="Configure your API key">
+    Create a `.env.local` file and add your API key:
+    ```bash
+    DECART_API_KEY=your-api-key-here
+    ```
+    <Note>
+      Use `.env.local` in Next.js to ensure environment variables are not exposed to the client.
+    </Note>
+  </Step>
+
+  <Step title="Install dependencies">
+    From the repository root:
+    ```bash
+    pnpm install
+    pnpm build
+    ```
+  </Step>
+
+  <Step title="Start the development server">
+    ```bash
+    cd examples/nextjs-realtime
+    pnpm dev
+    ```
+    Open [http://localhost:3000](http://localhost:3000) in your browser.
+  </Step>
+</Steps>
+
+## Architecture
+
+```
+Browser → /api/realtime-token → Server (creates token) → Decart API
+        ← Client Token ←
+        → Realtime Connection (using client token) → Decart API
+```
+
+The client token is short-lived and scoped to real-time API access only, keeping your main API key secure.
+
+## Server: Token Generation API Route
+
+The `/api/realtime-token/route.ts` endpoint creates client tokens:
+
+```tsx
+import { createDecartClient } from "@decartai/sdk";
+import { NextResponse } from "next/server";
+
+const DECART_API_KEY = process.env.DECART_API_KEY;
+
+export async function POST() {
+  try {
+    if (!DECART_API_KEY) {
+      return NextResponse.json(
+        { error: "DECART_API_KEY is not set" },
+        { status: 500 }
+      );
+    }
+
+    const client = createDecartClient({
+      apiKey: DECART_API_KEY,
+    });
+    const token = await client.tokens.create();
+
+    return NextResponse.json(token);
+  } catch (error) {
+    console.error("Failed to create client token:", error);
+    return NextResponse.json(
+      { error: "Failed to create client token" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+## Client: Main Page Component
+
+The `app/page.tsx` component manages the prompt state:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { VideoStream } from "../components/video-stream";
+
+export default function Home() {
+  const [prompt, setPrompt] = useState("anime style, vibrant colors");
+
+  return (
+    <main style={{ padding: "2rem", fontFamily: "system-ui" }}>
+      <h1>Decart Realtime Demo</h1>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Style prompt:
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            style={{ marginLeft: "0.5rem", width: "300px", padding: "0.5rem" }}
+          />
+        </label>
+      </div>
+
+      <VideoStream prompt={prompt} />
+    </main>
+  );
+}
+```
+
+## Client: VideoStream Component
+
+The `components/video-stream.tsx` component fetches a token and connects:
+
+```tsx
+"use client";
+
+import {
+  createDecartClient,
+  type DecartSDKError,
+  models,
+  type RealTimeClient,
+} from "@decartai/sdk";
+import { useEffect, useRef, useState } from "react";
+
+interface VideoStreamProps {
+  prompt: string;
+}
+
+export function VideoStream({ prompt }: VideoStreamProps) {
+  const inputRef = useRef<HTMLVideoElement>(null);
+  const outputRef = useRef<HTMLVideoElement>(null);
+  const realtimeClientRef = useRef<RealTimeClient | null>(null);
+  const [status, setStatus] = useState<string>("idle");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function start() {
+      try {
+        const model = models.realtime("mirage_v2");
+
+        setStatus("requesting camera...");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            frameRate: model.fps,
+            width: model.width,
+            height: model.height,
+          },
+        });
+
+        if (!mounted) return;
+
+        if (inputRef.current) {
+          inputRef.current.srcObject = stream;
+        }
+
+        // Fetch client token from our backend API
+        const tokenResponse = await fetch("/api/realtime-token", {
+          method: "POST",
+        });
+        if (!tokenResponse.ok) {
+          throw new Error("Failed to get client token");
+        }
+        const { apiKey } = await tokenResponse.json();
+
+        if (!mounted) return;
+
+        setStatus("connecting...");
+
+        const client = createDecartClient({ apiKey });
+
+        const realtimeClient = await client.realtime.connect(stream, {
+          model,
+          onRemoteStream: (transformedStream: MediaStream) => {
+            if (outputRef.current) {
+              outputRef.current.srcObject = transformedStream;
+            }
+          },
+          initialState: {
+            prompt: { text: prompt, enhance: true },
+          },
+        });
+
+        realtimeClientRef.current = realtimeClient;
+
+        // Subscribe to events
+        realtimeClient.on("connectionChange", (state) => {
+          setStatus(state);
+        });
+
+        realtimeClient.on("error", (error: DecartSDKError) => {
+          setStatus(`error: ${error.message}`);
+        });
+      } catch (error) {
+        setStatus(`error: ${error}`);
+      }
+    }
+
+    start();
+
+    return () => {
+      mounted = false;
+      realtimeClientRef.current?.disconnect();
+    };
+  }, []);
+
+  // Update prompt when it changes
+  useEffect(() => {
+    if (realtimeClientRef.current?.isConnected()) {
+      realtimeClientRef.current.setPrompt(prompt, { enhance: true });
+    }
+  }, [prompt]);
+
+  return (
+    <div>
+      <p>Status: {status}</p>
+      <div style={{ display: "flex", gap: "1rem" }}>
+        <div>
+          <h3>Input</h3>
+          <video ref={inputRef} autoPlay muted playsInline width={400} />
+        </div>
+        <div>
+          <h3>Styled Output</h3>
+          <video ref={outputRef} autoPlay playsInline width={400} />
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+## Key Concepts
+
+### Client Tokens
+
+Client tokens provide secure, temporary access to the real-time API:
+
+```tsx
+// Server-side: Create token
+const token = await client.tokens.create();
+
+// Client-side: Fetch token
+const response = await fetch("/api/realtime-token", { method: "POST" });
+const { apiKey } = await response.json();
+
+// Use token to create client
+const client = createDecartClient({ apiKey });
+```
+
+### Benefits of Client Tokens
+
+1. **Security**: Your main API key never leaves the server
+2. **Scoped Access**: Tokens only work with the real-time API
+3. **Time-Limited**: Tokens expire automatically
+4. **Simple**: Drop-in replacement for API keys in client code
+
+### Next.js App Router
+
+This example uses Next.js App Router features:
+
+- **Server Actions**: API routes in `app/api/` directory
+- **Client Components**: Interactive UI with `"use client"` directive
+- **Environment Variables**: `.env.local` for server-side secrets
+
+### Error Handling
+
+Handle token fetch and connection errors:
+
+```tsx
+const tokenResponse = await fetch("/api/realtime-token", {
+  method: "POST",
+});
+
+if (!tokenResponse.ok) {
+  throw new Error("Failed to get client token");
+}
+```
+
+## Available Models
+
+You can use different real-time models:
+
+- `mirage_v2` - MirageLSD video restyling (recommended)
+- `mirage` - Original MirageLSD model
+- `lucy_v2v_720p_rt` - Lucy for video editing (add/change objects)
+- `lucy_2_rt` - Lucy 2 with reference image support
+
+## Related Documentation
+
+- [Client Tokens API](/api/tokens/create)
+- [Real-time API Reference](/api/realtime/connect)
+- [Real-time Models](/models/realtime)
+- [Security Best Practices](/guides/proxy-setup)

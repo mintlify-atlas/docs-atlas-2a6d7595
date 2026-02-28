@@ -1,0 +1,317 @@
+---
+title: Proxy Setup
+description: Set up a proxy server to keep your API key secure in production
+---
+
+Proxy mode allows you to use the Decart AI SDK in production without exposing your API key in client code. The proxy server handles authentication while your frontend makes requests through it.
+
+## Why Use Proxy Mode?
+
+### Security Benefits
+
+1. **API key stays server-side** - Never exposed in client bundles or browser
+2. **No token generation needed** - Simpler than managing client tokens
+3. **Rate limiting** - Control usage from a single point
+4. **Request filtering** - Validate or modify requests before forwarding
+5. **Usage tracking** - Monitor all API usage from one location
+
+### When to Use Proxy vs Tokens
+
+**Use Proxy Mode for:**
+- Process API (image generation)
+- Queue API (video generation)
+- Production web applications
+- Public-facing apps
+
+**Use Client Tokens for:**
+- Real-time video streaming (WebRTC)
+- When you need user-specific permissions
+- When proxy adds too much latency
+
+## Installation
+
+Install the proxy package:
+
+```bash
+npm install @decartai/proxy
+```
+
+## Next.js Proxy Setup
+
+The easiest way to set up a proxy in Next.js:
+
+### 1. Create Proxy Route
+
+```ts
+// app/api/decart/[...path]/route.ts
+import { route } from "@decartai/proxy/nextjs";
+
+export const { GET, POST } = route();
+```
+
+This creates a catch-all route that handles all requests to `/api/decart/*`.
+
+### 2. Set Environment Variable
+
+```bash
+# .env.local
+DECART_API_KEY=your_api_key_here
+```
+
+### 3. Use in Client Code
+
+```tsx
+"use client";
+
+import { PROXY_ROUTE } from "@decartai/proxy/nextjs";
+import { createDecartClient, models } from "@decartai/sdk";
+import { useState } from "react";
+
+export default function Home() {
+  const [prompt, setPrompt] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    // No API key needed - uses proxy
+    const client = createDecartClient({ proxy: PROXY_ROUTE });
+    
+    const blob = await client.process({
+      model: models.image("lucy-pro-t2i"),
+      prompt,
+    });
+    
+    setImageUrl(URL.createObjectURL(blob));
+  };
+
+  return (
+    <div>
+      <input
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="Enter a prompt"
+      />
+      <button onClick={handleGenerate}>Generate</button>
+      {imageUrl && <img src={imageUrl} alt="Generated" />}
+    </div>
+  );
+}
+```
+
+## Express Proxy Setup
+
+For Express servers, use the Express proxy handler:
+
+### Server Setup
+
+```ts
+import "dotenv/config";
+import { handler, route } from "@decartai/proxy/express";
+import express from "express";
+
+const app = express();
+
+// Serve static files (your frontend)
+app.use(express.static("public"));
+
+// Mount the Decart proxy middleware
+// All requests to /api/decart/* will be proxied to api.decart.ai
+app.use(route, handler());
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Proxy endpoint: http://localhost:${port}${route}`);
+});
+```
+
+### Environment Variables
+
+```bash
+# .env
+DECART_API_KEY=your_api_key_here
+```
+
+### Client Usage
+
+```html
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Decart Proxy Demo</title>
+</head>
+<body>
+  <input type="text" id="prompt" placeholder="Enter a prompt">
+  <button id="generate">Generate Image</button>
+  <img id="output" style="display:none">
+
+  <script type="module">
+    import { createDecartClient, models } from '/node_modules/@decartai/sdk/index.js';
+
+    const client = createDecartClient({ 
+      proxy: '/api/decart' 
+    });
+
+    document.getElementById('generate').addEventListener('click', async () => {
+      const prompt = document.getElementById('prompt').value;
+      
+      const blob = await client.process({
+        model: models.image('lucy-pro-t2i'),
+        prompt,
+      });
+
+      const img = document.getElementById('output');
+      img.src = URL.createObjectURL(blob);
+      img.style.display = 'block';
+    });
+  </script>
+</body>
+</html>
+```
+
+## Custom Proxy Implementation
+
+You can also implement a custom proxy if you need more control:
+
+```ts
+import express from "express";
+import { createDecartClient, models } from "@decartai/sdk";
+
+const app = express();
+app.use(express.json());
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY!,
+});
+
+// Custom proxy with request validation
+app.post("/api/generate-image", async (req, res) => {
+  const { prompt } = req.body;
+
+  // Validate input
+  if (!prompt || prompt.length > 1000) {
+    return res.status(400).json({ error: "Invalid prompt" });
+  }
+
+  // Add rate limiting, logging, etc.
+  console.log(`Image generation request: ${prompt}`);
+
+  try {
+    const blob = await client.process({
+      model: models.image("lucy-pro-t2i"),
+      prompt,
+    });
+
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "image/png");
+    res.send(buffer);
+  } catch (error) {
+    console.error("Generation error:", error);
+    res.status(500).json({ error: "Generation failed" });
+  }
+});
+
+app.listen(3000);
+```
+
+## Proxy Configuration
+
+The proxy packages automatically:
+
+1. **Forward requests** to `api.decart.ai`
+2. **Add authentication** using your server-side API key
+3. **Stream responses** back to the client
+4. **Handle errors** with appropriate status codes
+
+### Default Route
+
+- **Next.js**: `/api/decart`
+- **Express**: `/api/decart` (configurable)
+
+### Custom Base URL
+
+If you need to proxy to a different Decart API endpoint:
+
+```ts
+// Next.js
+export const { GET, POST } = route({
+  baseUrl: "https://custom-api.decart.ai",
+});
+
+// Express
+app.use(route, handler({
+  baseUrl: "https://custom-api.decart.ai",
+}));
+```
+
+## Security Considerations
+
+1. **CORS Configuration**: Configure CORS if your frontend is on a different domain
+2. **Rate Limiting**: Add rate limiting to prevent abuse
+3. **Input Validation**: Validate all client inputs before forwarding
+4. **Error Messages**: Don't expose sensitive error details to clients
+5. **HTTPS**: Always use HTTPS in production
+
+## Deployment
+
+### Vercel (Next.js)
+
+1. Deploy your Next.js app to Vercel
+2. Add `DECART_API_KEY` environment variable in Vercel dashboard
+3. The proxy route will work automatically
+
+### Node.js Servers
+
+1. Deploy to any Node.js hosting (Railway, Render, Fly.io, etc.)
+2. Set `DECART_API_KEY` environment variable
+3. Ensure proxy route is accessible
+
+### Docker
+
+```dockerfile
+FROM node:18
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+```bash
+docker build -t my-decart-proxy .
+docker run -p 3000:3000 -e DECART_API_KEY=your_key my-decart-proxy
+```
+
+## Troubleshooting
+
+### Proxy Not Working
+
+1. Check that `DECART_API_KEY` is set in environment
+2. Verify proxy route is mounted correctly
+3. Check browser network tab for request path
+4. Ensure API key is valid
+
+### CORS Errors
+
+Add CORS headers if needed:
+
+```ts
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'https://your-frontend.com');
+  res.header('Access-Control-Allow-Methods', 'GET, POST');
+  next();
+});
+```
+
+### 401 Unauthorized
+
+- API key is missing or invalid
+- Check environment variable is loaded
+- Verify API key in Decart dashboard
+
+## Next Steps
+
+- [Next.js Integration](/guides/nextjs-integration) - Complete Next.js guide
+- [Server-Side Usage](/guides/server-side) - Server-side patterns
+- [Error Handling](/guides/error-handling) - Handle errors gracefully

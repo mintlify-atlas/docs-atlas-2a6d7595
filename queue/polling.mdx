@@ -1,0 +1,284 @@
+---
+title: 'Polling for Completion'
+description: 'Learn how to poll for job completion using automatic or manual approaches'
+---
+
+After submitting a job, you need to poll the queue to check when processing is complete. The SDK provides both automatic and manual polling methods.
+
+## Automatic Polling
+
+The easiest way to handle polling is with `submitAndPoll()`, which submits the job and automatically polls until completion.
+
+### Method Signature
+
+```typescript
+submitAndPoll: <T extends VideoModelDefinition>(
+  options: QueueSubmitAndPollOptions<T>
+) => Promise<QueueJobResult>
+```
+
+### Parameters
+
+All parameters from `submit()` plus:
+
+<ParamField path="options.onStatusChange" type="(job: JobStatusResponse) => void">
+  Optional callback invoked when job status changes during polling.
+</ParamField>
+
+### Return Value
+
+```typescript
+type QueueJobResult =
+  | { status: "completed"; job_id: string; data: Blob }
+  | { status: "failed"; job_id: string; error: string };
+```
+
+### Basic Example
+
+```typescript
+import { createDecartClient, models } from "@decart/sdk";
+import * as fs from "fs/promises";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful sunset over the ocean",
+  onStatusChange: (job) => {
+    console.log(`Job ${job.job_id}: ${job.status}`);
+  },
+});
+
+if (result.status === "completed") {
+  // Save the video
+  const arrayBuffer = await result.data.arrayBuffer();
+  await fs.writeFile("output.mp4", Buffer.from(arrayBuffer));
+  console.log("Video saved successfully!");
+} else {
+  // Handle failure
+  console.error(`Job ${result.job_id} failed:`, result.error);
+}
+```
+
+### With Progress Tracking
+
+Use the `onStatusChange` callback to track progress:
+
+```typescript
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Camera pans across the landscape",
+  data: "https://example.com/landscape.jpg",
+  onStatusChange: (job) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] Job ${job.job_id} is ${job.status}`);
+    
+    // Update UI, show spinner, etc.
+    if (job.status === "processing") {
+      showSpinner("Processing video...");
+    }
+  },
+});
+
+if (result.status === "completed") {
+  hideSpinner();
+  displayVideo(result.data);
+}
+```
+
+### Cancellation
+
+You can cancel polling using an `AbortSignal`:
+
+```typescript
+const controller = new AbortController();
+
+// Cancel after 5 minutes
+setTimeout(() => controller.abort(), 5 * 60 * 1000);
+
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "A stormy sea with lightning",
+    signal: controller.signal,
+  });
+} catch (error) {
+  if (error.message === "Polling aborted") {
+    console.log("Polling was cancelled");
+  }
+}
+```
+
+## Manual Polling
+
+For more control over the polling process, you can manually submit and check status.
+
+### Method Signatures
+
+```typescript
+// Check job status
+status: (jobId: string) => Promise<JobStatusResponse>
+
+// Retrieve completed job result
+result: (jobId: string) => Promise<Blob>
+```
+
+### Complete Manual Example
+
+```typescript
+import { createDecartClient, models } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Step 1: Submit the job
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A peaceful forest with sunlight filtering through trees",
+});
+
+console.log(`Job submitted: ${job.job_id}`);
+
+// Step 2: Poll for completion
+let status = job.status;
+while (status === "pending" || status === "processing") {
+  console.log(`Current status: ${status}`);
+  
+  // Wait before next poll (recommended: 1-2 seconds)
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  
+  // Check status
+  const statusResponse = await client.queue.status(job.job_id);
+  status = statusResponse.status;
+}
+
+// Step 3: Handle result
+if (status === "completed") {
+  const videoBlob = await client.queue.result(job.job_id);
+  
+  // Save or display the video
+  const arrayBuffer = await videoBlob.arrayBuffer();
+  await fs.writeFile("output.mp4", Buffer.from(arrayBuffer));
+  console.log("Video generation complete!");
+} else if (status === "failed") {
+  console.error("Job failed");
+}
+```
+
+### Reusable Polling Function
+
+Create a helper function for manual polling:
+
+```typescript
+async function pollJob(client: DecartClient, jobId: string) {
+  const POLL_INTERVAL = 1500; // 1.5 seconds
+  
+  while (true) {
+    const status = await client.queue.status(jobId);
+    
+    if (status.status === "completed") {
+      const blob = await client.queue.result(jobId);
+      return { success: true, data: blob };
+    }
+    
+    if (status.status === "failed") {
+      return { success: false, error: "Job failed" };
+    }
+    
+    // Still pending or processing
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+  }
+}
+
+// Usage
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A magical forest",
+});
+
+const result = await pollJob(client, job.job_id);
+if (result.success) {
+  console.log("Got video:", result.data);
+}
+```
+
+## Polling Best Practices
+
+### Recommended Intervals
+
+The SDK uses these default polling intervals:
+
+- **Initial delay**: 500ms before first status check
+- **Poll interval**: 1500ms (1.5 seconds) between checks
+
+These values balance responsiveness with server load. Avoid polling more frequently than once per second.
+
+### Timeout Handling
+
+<Note>
+  The backend automatically fails jobs after 10 minutes. You don't need to implement your own timeout,
+  but you can use `AbortSignal` to cancel polling earlier if needed.
+</Note>
+
+```typescript
+const controller = new AbortController();
+
+// Set custom timeout (3 minutes)
+const timeout = setTimeout(() => {
+  controller.abort();
+  console.log("Polling timeout - job took too long");
+}, 3 * 60 * 1000);
+
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "Epic cinematic scene",
+    signal: controller.signal,
+  });
+  
+  clearTimeout(timeout);
+  
+  if (result.status === "completed") {
+    console.log("Success!");
+  }
+} catch (error) {
+  clearTimeout(timeout);
+  throw error;
+}
+```
+
+### Error Handling
+
+```typescript
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "Beautiful landscape",
+  });
+  
+  if (result.status === "completed") {
+    // Success
+    handleSuccess(result.data);
+  } else {
+    // Job failed on backend
+    handleFailure(result.error);
+  }
+} catch (error) {
+  // Network error, validation error, or aborted
+  console.error("Polling error:", error.message);
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Job Status" icon="circle-info" href="/queue/status">
+    Learn about job status values and error handling
+  </Card>
+  <Card title="Submit Jobs" icon="paper-plane" href="/queue/submit">
+    Review job submission for different model types
+  </Card>
+</CardGroup>

@@ -1,0 +1,291 @@
+---
+title: React + Vite Real-time
+description: Build a real-time video transformation app with React and Vite
+---
+
+This example demonstrates how to build a real-time video transformation application using React, Vite, and the Decart SDK. The app captures webcam input and applies AI-powered style transformations in real-time.
+
+## What You'll Build
+
+A React application that:
+- Captures webcam video using the browser's MediaStream API
+- Connects to Decart's real-time API for video transformation
+- Displays input and transformed video side-by-side
+- Allows dynamic prompt updates without reconnecting
+- Manages connection state and error handling
+
+## Prerequisites
+
+- Node.js 18 or higher
+- A Decart API key
+- A webcam for testing
+
+## Setup
+
+<Steps>
+  <Step title="Clone and navigate to the example">
+    ```bash
+    git clone https://github.com/decartai/sdk
+    cd sdk/examples/react-vite
+    ```
+  </Step>
+
+  <Step title="Configure your API key">
+    Create a `.env` file and add your API key:
+    ```bash
+    VITE_DECART_API_KEY=your-api-key-here
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    From the repository root:
+    ```bash
+    pnpm install
+    pnpm build
+    ```
+  </Step>
+
+  <Step title="Start the development server">
+    ```bash
+    cd examples/react-vite
+    pnpm dev
+    ```
+    Open [http://localhost:5173](http://localhost:5173) in your browser.
+  </Step>
+</Steps>
+
+## Main Application Component
+
+The `App.tsx` component manages the prompt state and renders the video stream:
+
+```tsx
+import { useState } from "react";
+import { VideoStream } from "./components/VideoStream";
+
+function App() {
+  const [prompt, setPrompt] = useState("anime style, vibrant colors");
+
+  return (
+    <div style={{ padding: "2rem", fontFamily: "system-ui" }}>
+      <h1>Decart Realtime Demo</h1>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Style prompt:
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            style={{ marginLeft: "0.5rem", width: "300px", padding: "0.5rem" }}
+          />
+        </label>
+      </div>
+
+      <VideoStream prompt={prompt} />
+    </div>
+  );
+}
+
+export default App;
+```
+
+## VideoStream Component
+
+The `VideoStream` component handles the real-time connection and video display:
+
+```tsx
+import { createDecartClient, type DecartSDKError, models, type RealTimeClient } from "@decartai/sdk";
+import { useEffect, useRef, useState } from "react";
+
+interface VideoStreamProps {
+  prompt: string;
+}
+
+export function VideoStream({ prompt }: VideoStreamProps) {
+  const inputRef = useRef<HTMLVideoElement>(null);
+  const outputRef = useRef<HTMLVideoElement>(null);
+  const realtimeClientRef = useRef<RealTimeClient | null>(null);
+  const [status, setStatus] = useState<string>("idle");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function start() {
+      try {
+        const model = models.realtime("mirage_v2");
+
+        setStatus("requesting camera...");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            frameRate: model.fps,
+            width: model.width,
+            height: model.height,
+          },
+        });
+
+        if (!mounted) return;
+
+        if (inputRef.current) {
+          inputRef.current.srcObject = stream;
+        }
+
+        setStatus("connecting...");
+
+        const apiKey = import.meta.env.VITE_DECART_API_KEY;
+        if (!apiKey) {
+          throw new Error("DECART_API_KEY is not set");
+        }
+
+        const client = createDecartClient({ apiKey });
+
+        const realtimeClient = await client.realtime.connect(stream, {
+          model,
+          onRemoteStream: (transformedStream: MediaStream) => {
+            if (outputRef.current) {
+              outputRef.current.srcObject = transformedStream;
+            }
+          },
+          initialState: {
+            prompt: { text: prompt, enhance: true },
+          },
+        });
+
+        realtimeClientRef.current = realtimeClient;
+
+        // Subscribe to events
+        realtimeClient.on("connectionChange", (state) => {
+          setStatus(state);
+        });
+
+        realtimeClient.on("error", (error: DecartSDKError) => {
+          setStatus(`error: ${error.message}`);
+        });
+      } catch (error) {
+        setStatus(`error: ${error}`);
+      }
+    }
+
+    start();
+
+    return () => {
+      mounted = false;
+      realtimeClientRef.current?.disconnect();
+    };
+  }, []);
+
+  // Update prompt when it changes
+  useEffect(() => {
+    if (realtimeClientRef.current?.isConnected()) {
+      realtimeClientRef.current.setPrompt(prompt, { enhance: true });
+    }
+  }, [prompt]);
+
+  return (
+    <div>
+      <p>Status: {status}</p>
+      <div style={{ display: "flex", gap: "1rem" }}>
+        <div>
+          <h3>Input</h3>
+          <video ref={inputRef} autoPlay muted playsInline width={400} />
+        </div>
+        <div>
+          <h3>Styled Output</h3>
+          <video ref={outputRef} autoPlay playsInline width={400} />
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+## Key Concepts
+
+### Model Configuration
+
+The example uses `mirage_v2` for real-time style transformation:
+
+```tsx
+const model = models.realtime("mirage_v2");
+```
+
+The model object contains recommended settings like `fps`, `width`, and `height` that should be used when requesting the webcam stream.
+
+### Camera Access
+
+Request camera access with constraints matching the model's requirements:
+
+```tsx
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: {
+    frameRate: model.fps,
+    width: model.width,
+    height: model.height,
+  },
+});
+```
+
+### Real-time Connection
+
+Connect to the real-time API with the input stream and configuration:
+
+```tsx
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  onRemoteStream: (transformedStream) => {
+    // Receive the transformed video stream
+    outputRef.current.srcObject = transformedStream;
+  },
+  initialState: {
+    prompt: { text: prompt, enhance: true },
+  },
+});
+```
+
+### Dynamic Prompt Updates
+
+Update the style prompt without reconnecting:
+
+```tsx
+realtimeClient.setPrompt(prompt, { enhance: true });
+```
+
+The `enhance` option uses AI to improve prompt quality for better results.
+
+### Event Handling
+
+Subscribe to connection state changes and errors:
+
+```tsx
+realtimeClient.on("connectionChange", (state) => {
+  setStatus(state);
+});
+
+realtimeClient.on("error", (error) => {
+  console.error(error.message);
+});
+```
+
+### Cleanup
+
+Always disconnect when the component unmounts:
+
+```tsx
+return () => {
+  realtimeClientRef.current?.disconnect();
+};
+```
+
+## Available Models
+
+You can use different real-time models:
+
+- `mirage_v2` - MirageLSD video restyling (recommended)
+- `mirage` - Original MirageLSD model
+- `lucy_v2v_720p_rt` - Lucy for video editing (add/change objects)
+- `lucy_2_rt` - Lucy 2 with reference image support
+
+## Related Documentation
+
+- [Real-time API Reference](/api/realtime/connect)
+- [Real-time Models](/models/realtime)
+- [Client Configuration](/api/create-client)

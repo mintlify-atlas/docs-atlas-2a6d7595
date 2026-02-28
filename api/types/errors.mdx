@@ -1,0 +1,348 @@
+---
+title: Error Types
+description: Type reference for SDK error codes and error handling
+---
+
+The Decart SDK uses a standardized error structure with specific error codes for different failure scenarios.
+
+## DecartSDKError Type
+
+```typescript
+type DecartSDKError = {
+  code: string;
+  message: string;
+  data?: Record<string, unknown>;
+  cause?: Error;
+};
+```
+
+### Fields
+
+<ParamField path="code" type="string" required>
+  Error code from ERROR_CODES constants identifying the error type.
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Human-readable error message describing what went wrong.
+</ParamField>
+
+<ParamField path="data" type="Record<string, unknown>" optional>
+  Additional context data about the error (e.g., status codes, job IDs).
+</ParamField>
+
+<ParamField path="cause" type="Error" optional>
+  The underlying Error that caused this SDK error, if applicable.
+</ParamField>
+
+## ERROR_CODES Constants
+
+```typescript
+const ERROR_CODES = {
+  INVALID_API_KEY: "INVALID_API_KEY",
+  INVALID_BASE_URL: "INVALID_BASE_URL",
+  PROCESSING_ERROR: "PROCESSING_ERROR",
+  INVALID_INPUT: "INVALID_INPUT",
+  INVALID_OPTIONS: "INVALID_OPTIONS",
+  MODEL_NOT_FOUND: "MODEL_NOT_FOUND",
+  QUEUE_SUBMIT_ERROR: "QUEUE_SUBMIT_ERROR",
+  QUEUE_STATUS_ERROR: "QUEUE_STATUS_ERROR",
+  QUEUE_RESULT_ERROR: "QUEUE_RESULT_ERROR",
+  JOB_NOT_COMPLETED: "JOB_NOT_COMPLETED",
+  TOKEN_CREATE_ERROR: "TOKEN_CREATE_ERROR",
+  WEBRTC_WEBSOCKET_ERROR: "WEBRTC_WEBSOCKET_ERROR",
+  WEBRTC_ICE_ERROR: "WEBRTC_ICE_ERROR",
+  WEBRTC_TIMEOUT_ERROR: "WEBRTC_TIMEOUT_ERROR",
+  WEBRTC_SERVER_ERROR: "WEBRTC_SERVER_ERROR",
+  WEBRTC_SIGNALING_ERROR: "WEBRTC_SIGNALING_ERROR",
+} as const;
+```
+
+### Error Code Categories
+
+#### Configuration Errors
+
+<ResponseField name="INVALID_API_KEY" type="string">
+  Missing or invalid API key. Set via `apiKey` option or `DECART_API_KEY` environment variable.
+</ResponseField>
+
+<ResponseField name="INVALID_BASE_URL" type="string">
+  Invalid base URL provided in client configuration.
+</ResponseField>
+
+<ResponseField name="INVALID_OPTIONS" type="string">
+  Invalid options passed to a client method.
+</ResponseField>
+
+#### Input Validation Errors
+
+<ResponseField name="INVALID_INPUT" type="string">
+  Invalid input data (e.g., unsupported file type, malformed prompt).
+</ResponseField>
+
+<ResponseField name="MODEL_NOT_FOUND" type="string">
+  The specified model does not exist.
+</ResponseField>
+
+#### Processing Errors
+
+<ResponseField name="PROCESSING_ERROR" type="string">
+  General processing error from the API.
+</ResponseField>
+
+<ResponseField name="TOKEN_CREATE_ERROR" type="string">
+  Failed to create authentication token for WebRTC.
+</ResponseField>
+
+#### Queue API Errors
+
+<ResponseField name="QUEUE_SUBMIT_ERROR" type="string">
+  Failed to submit job to the queue.
+</ResponseField>
+
+<ResponseField name="QUEUE_STATUS_ERROR" type="string">
+  Failed to retrieve job status.
+</ResponseField>
+
+<ResponseField name="QUEUE_RESULT_ERROR" type="string">
+  Failed to retrieve job result.
+</ResponseField>
+
+<ResponseField name="JOB_NOT_COMPLETED" type="string">
+  Attempted to get result for a job that hasn't completed.
+</ResponseField>
+
+#### WebRTC Errors
+
+<ResponseField name="WEBRTC_WEBSOCKET_ERROR" type="string">
+  WebSocket connection failed during WebRTC setup.
+</ResponseField>
+
+<ResponseField name="WEBRTC_ICE_ERROR" type="string">
+  ICE connection failed (network connectivity issue).
+</ResponseField>
+
+<ResponseField name="WEBRTC_TIMEOUT_ERROR" type="string">
+  WebRTC connection or operation timed out.
+</ResponseField>
+
+<ResponseField name="WEBRTC_SERVER_ERROR" type="string">
+  Server-side error during WebRTC session.
+</ResponseField>
+
+<ResponseField name="WEBRTC_SIGNALING_ERROR" type="string">
+  Signaling error during WebRTC connection establishment.
+</ResponseField>
+
+## Usage Examples
+
+### Basic Error Handling
+
+```typescript
+import { createDecartClient, ERROR_CODES } from '@decart-ai/sdk';
+import type { DecartSDKError } from '@decart-ai/sdk';
+
+try {
+  const client = createDecartClient({ apiKey: 'your-api-key' });
+  
+  await client.realtime.connect({
+    model: models.realtime('mirage')
+  });
+} catch (error) {
+  const sdkError = error as DecartSDKError;
+  
+  console.error('Error code:', sdkError.code);
+  console.error('Error message:', sdkError.message);
+  
+  if (sdkError.data) {
+    console.error('Additional data:', sdkError.data);
+  }
+  
+  if (sdkError.cause) {
+    console.error('Caused by:', sdkError.cause);
+  }
+}
+```
+
+### Handling Specific Error Types
+
+```typescript
+import { ERROR_CODES } from '@decart-ai/sdk';
+
+try {
+  await client.queue.submit({
+    model: models.video('lucy-pro-t2v'),
+    prompt: 'A serene lake'
+  });
+} catch (error) {
+  const sdkError = error as DecartSDKError;
+  
+  switch (sdkError.code) {
+    case ERROR_CODES.INVALID_API_KEY:
+      console.error('Please provide a valid API key');
+      break;
+      
+    case ERROR_CODES.QUEUE_SUBMIT_ERROR:
+      console.error('Failed to submit job:', sdkError.message);
+      if (sdkError.data?.status) {
+        console.error('HTTP status:', sdkError.data.status);
+      }
+      break;
+      
+    case ERROR_CODES.MODEL_NOT_FOUND:
+      console.error('Model does not exist');
+      break;
+      
+    default:
+      console.error('Unexpected error:', sdkError.message);
+  }
+}
+```
+
+### WebRTC Error Handling
+
+```typescript
+import { ERROR_CODES } from '@decart-ai/sdk';
+
+client.realtime.on('error', (error) => {
+  const sdkError = error as DecartSDKError;
+  
+  switch (sdkError.code) {
+    case ERROR_CODES.WEBRTC_WEBSOCKET_ERROR:
+      console.error('WebSocket connection failed');
+      // Retry connection
+      break;
+      
+    case ERROR_CODES.WEBRTC_ICE_ERROR:
+      console.error('Network connectivity issue');
+      // Check firewall/network settings
+      break;
+      
+    case ERROR_CODES.WEBRTC_TIMEOUT_ERROR:
+      console.error('Connection timed out');
+      if (sdkError.data?.timeoutMs) {
+        console.error('Timeout duration:', sdkError.data.timeoutMs, 'ms');
+      }
+      break;
+      
+    case ERROR_CODES.WEBRTC_SERVER_ERROR:
+      console.error('Server error:', sdkError.message);
+      break;
+      
+    default:
+      console.error('WebRTC error:', sdkError.message);
+  }
+});
+```
+
+### Queue Job Error Handling
+
+```typescript
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video('lucy-pro-v2v'),
+    video: videoFile,
+    prompt: 'Transform to anime style'
+  });
+  
+  if (result.status === 'failed') {
+    console.error('Job failed:', result.error);
+  } else {
+    console.log('Success:', result.data);
+  }
+} catch (error) {
+  const sdkError = error as DecartSDKError;
+  
+  if (sdkError.code === ERROR_CODES.JOB_NOT_COMPLETED) {
+    console.error('Job not ready:', sdkError.data?.currentStatus);
+  } else {
+    console.error('Unexpected error:', sdkError.message);
+  }
+}
+```
+
+### Type Guard for SDK Errors
+
+```typescript
+function isDecartSDKError(error: unknown): error is DecartSDKError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error
+  );
+}
+
+try {
+  await client.process.generate({
+    model: models.image('lucy-pro-t2i'),
+    prompt: 'A futuristic city'
+  });
+} catch (error) {
+  if (isDecartSDKError(error)) {
+    console.error(`SDK Error [${error.code}]:`, error.message);
+  } else {
+    console.error('Unknown error:', error);
+  }
+}
+```
+
+### Error Recovery Pattern
+
+```typescript
+const MAX_RETRIES = 3;
+
+async function connectWithRetry(retries = 0): Promise<void> {
+  try {
+    await client.realtime.connect({
+      model: models.realtime('mirage')
+    });
+  } catch (error) {
+    const sdkError = error as DecartSDKError;
+    
+    // Retry on transient errors
+    const retryableErrors = [
+      ERROR_CODES.WEBRTC_WEBSOCKET_ERROR,
+      ERROR_CODES.WEBRTC_TIMEOUT_ERROR,
+    ];
+    
+    if (retryableErrors.includes(sdkError.code) && retries < MAX_RETRIES) {
+      console.log(`Retrying... (${retries + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, 1000 * (retries + 1)));
+      return connectWithRetry(retries + 1);
+    }
+    
+    // Non-retryable error or max retries reached
+    throw error;
+  }
+}
+```
+
+## Error Factory Functions
+
+The SDK provides helper functions to create standardized errors:
+
+```typescript
+import { createSDKError, ERROR_CODES } from '@decart-ai/sdk';
+
+// Create a custom error
+const error = createSDKError(
+  ERROR_CODES.INVALID_INPUT,
+  'File size exceeds 100MB limit',
+  { maxSize: 100 * 1024 * 1024, actualSize: fileSize }
+);
+```
+
+## Related APIs
+
+- [on('error')](/api/realtime/events#error) - Listen for real-time errors
+- [QueueJobResult](/api/types/job-status#queuejobresult) - Check for failed job results
+- [createDecartClient()](/api/create-client) - Client configuration errors
+
+## Notes
+
+- All SDK errors follow the `DecartSDKError` structure
+- Error codes are constants for reliable error handling
+- The `data` field provides additional context specific to each error type
+- WebRTC errors include the underlying `cause` when available
+- Always check error codes rather than parsing error messages
+- Use TypeScript type guards for safe error handling

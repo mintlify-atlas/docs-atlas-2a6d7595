@@ -1,0 +1,304 @@
+---
+title: Image-to-Video Generation
+description: Animate still images into videos using the Queue API
+---
+
+This example demonstrates how to convert static images into animated videos using the Decart Queue API. The image-to-video model brings still images to life with natural, AI-generated motion.
+
+## What You'll Build
+
+An image-to-video workflow that:
+- Loads an input image from a file or URL
+- Submits an image-to-video generation job
+- Polls for completion
+- Saves the generated video
+
+## Prerequisites
+
+- Node.js 18 or higher
+- A Decart API key
+- An input image (PNG, JPG, or WebP)
+
+## Quick Start
+
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    npm install @decartai/sdk
+    ```
+  </Step>
+
+  <Step title="Set your API key">
+    ```bash
+    export DECART_API_KEY=your-api-key-here
+    ```
+  </Step>
+
+  <Step title="Create an image-to-video script">
+    Create `animate-image.js`:
+    ```javascript
+    import fs from "node:fs";
+    import { createDecartClient, models } from "@decartai/sdk";
+
+    const client = createDecartClient({
+      apiKey: process.env.DECART_API_KEY,
+    });
+
+    console.log("Generating video from image...");
+
+    const inputImage = fs.readFileSync("input.png");
+
+    const result = await client.queue.submitAndPoll({
+      model: models.video("lucy-pro-i2v"),
+      prompt: "The scene comes to life with gentle motion",
+      data: new Blob([inputImage]),
+      onStatusChange: (job) => {
+        console.log(`Job ${job.job_id}: ${job.status}`);
+      },
+    });
+
+    if (result.status === "completed") {
+      const output = Buffer.from(await result.data.arrayBuffer());
+      fs.writeFileSync("output.mp4", output);
+      console.log("Video saved to output.mp4");
+    } else {
+      console.log("Job failed:", result.error);
+    }
+    ```
+  </Step>
+
+  <Step title="Run the script">
+    ```bash
+    node animate-image.js
+    ```
+  </Step>
+</Steps>
+
+## From Local File
+
+Load an image from the local filesystem:
+
+```javascript
+import fs from "node:fs";
+import { createDecartClient, models } from "@decartai/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Read image file
+const inputImage = fs.readFileSync("path/to/image.png");
+
+// Generate video
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Gentle wind blowing through the scene",
+  data: new Blob([inputImage]),
+});
+
+if (result.status === "completed") {
+  const output = Buffer.from(await result.data.arrayBuffer());
+  fs.writeFileSync("output.mp4", output);
+}
+```
+
+## From URL
+
+You can also use an image URL:
+
+```javascript
+import { createDecartClient, models } from "@decartai/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "The landscape comes alive with subtle movement",
+  data: "https://example.com/image.jpg",
+});
+
+if (result.status === "completed") {
+  const output = Buffer.from(await result.data.arrayBuffer());
+  fs.writeFileSync("output.mp4", output);
+}
+```
+
+## From Browser (File Upload)
+
+In a browser environment, use file input:
+
+```javascript
+import { createDecartClient, models } from "@decartai/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Get file from input element
+const fileInput = document.getElementById("imageInput");
+const file = fileInput.files[0];
+
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Bring this image to life with natural motion",
+  data: file, // File object is already a Blob
+  onStatusChange: (job) => {
+    console.log(`Processing: ${job.status}`);
+  },
+});
+
+if (result.status === "completed") {
+  // Create object URL for video playback
+  const videoUrl = URL.createObjectURL(result.data);
+  const videoElement = document.getElementById("output");
+  videoElement.src = videoUrl;
+}
+```
+
+## Manual Job Control
+
+For webhooks or background processing:
+
+```javascript
+import { createDecartClient, models } from "@decartai/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const inputImage = fs.readFileSync("landscape.jpg");
+
+// Submit job and get ID
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "The sun moves across the sky",
+  data: new Blob([inputImage]),
+});
+
+console.log("Job ID:", job.job_id);
+// Store job.job_id in database for later retrieval
+
+// Later, check status
+const status = await client.queue.status(job.job_id);
+
+if (status.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  const buffer = Buffer.from(await blob.arrayBuffer());
+  fs.writeFileSync("output.mp4", buffer);
+}
+```
+
+## Prompt Tips
+
+Effective prompts for image-to-video:
+
+### Natural Motion
+```javascript
+prompt: "Gentle wind rustling through the trees"
+prompt: "Clouds slowly drifting across the sky"
+prompt: "Waves lapping at the shore"
+```
+
+### Camera Movement
+```javascript
+prompt: "Slow zoom into the scene"
+prompt: "Pan across the landscape from left to right"
+prompt: "Camera slowly orbiting around the subject"
+```
+
+### Bringing Scenes to Life
+```javascript
+prompt: "The scene comes alive with activity and movement"
+prompt: "Natural motion as if captured on video"
+prompt: "Subtle ambient motion throughout the scene"
+```
+
+## Express API Example
+
+```javascript
+import express from "express";
+import multer from "multer";
+import { createDecartClient, models } from "@decartai/sdk";
+
+const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit image-to-video job
+app.post("/api/animate", upload.single("image"), async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const imageBuffer = req.file.buffer;
+
+    const job = await client.queue.submit({
+      model: models.video("lucy-pro-i2v"),
+      prompt,
+      data: new Blob([imageBuffer]),
+    });
+
+    res.json({ jobId: job.job_id, status: job.status });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Check job status
+app.get("/api/status/:jobId", async (req, res) => {
+  try {
+    const status = await client.queue.status(req.params.jobId);
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Get video result
+app.get("/api/result/:jobId", async (req, res) => {
+  try {
+    const blob = await client.queue.result(req.params.jobId);
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "video/mp4");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.listen(3000, () => {
+  console.log("Server running on http://localhost:3000");
+});
+```
+
+## Supported Image Formats
+
+- PNG
+- JPEG/JPG
+- WebP
+- GIF (first frame used)
+
+## Output Specifications
+
+- **Format**: MP4 (H.264)
+- **Duration**: 5 seconds
+- **Frame Rate**: 30 FPS
+- **Resolution**: Based on input image (maintains aspect ratio)
+
+## Best Practices
+
+1. **Use high-quality input images** - Better input yields better output
+2. **Be specific with prompts** - Describe the type of motion you want
+3. **Consider image composition** - Images with clear subjects work best
+4. **Test different prompts** - Experiment to find what works for your use case
+5. **Cache results** - Store generated videos to avoid regenerating
+
+## Related Documentation
+
+- [Queue API Reference](/api/queue/submit)
+- [Video Models](/models/video)
+- [Video Generation Example](/examples/video-generation)
+- [Express API Example](/examples/express-api)

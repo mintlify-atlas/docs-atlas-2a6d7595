@@ -1,0 +1,293 @@
+---
+title: "submitAndPoll()"
+description: "Submit a job and automatically poll until completion"
+---
+
+## Method Signature
+
+```typescript
+submitAndPoll<T extends VideoModelDefinition>(
+  options: QueueSubmitAndPollOptions<T>
+): Promise<QueueJobResult>
+```
+
+Submit a job and automatically poll until completion. Returns a result object with status and does not throw on failure.
+
+## Parameters
+
+<ParamField path="options" type="QueueSubmitAndPollOptions<T>" required>
+  Configuration object for job submission and polling
+
+  <ParamField path="model" type="VideoModelDefinition" required>
+    The video model definition to use. Access models via `models.video()`.
+    
+    Supported models:
+    - `lucy-dev-i2v` - image-to-video (Dev quality)
+    - `lucy-fast-v2v` - video-to-video (Fast quality)
+    - `lucy-pro-t2v` - text-to-video (Pro quality)
+    - `lucy-pro-i2v` - image-to-video (Pro quality)
+    - `lucy-pro-v2v` - video-to-video (Pro quality)
+    - `lucy-pro-flf2v` - first-last-frame-to-video (Pro quality)
+    - `lucy-motion` - motion-based image-to-video
+    - `lucy-restyle-v2v` - video restyling
+  </ParamField>
+
+  <ParamField path="prompt" type="string">
+    Text prompt for generation (required for text-to-video models)
+  </ParamField>
+
+  <ParamField path="data" type="FileInput">
+    Input file (image or video). Accepts:
+    - `File` object
+    - `Blob` object
+    - `ReadableStream`
+    - URL string
+    - `URL` object
+    
+    Required for image-to-video and video-to-video models.
+  </ParamField>
+
+  <ParamField path="start" type="FileInput">
+    Start frame image for first-last-frame models (`lucy-pro-flf2v`)
+  </ParamField>
+
+  <ParamField path="end" type="FileInput">
+    End frame image for first-last-frame models (`lucy-pro-flf2v`)
+  </ParamField>
+
+  <ParamField path="reference_image" type="FileInput">
+    Reference image for style or appearance guidance (model-specific)
+  </ParamField>
+
+  <ParamField path="onStatusChange" type="(job: JobStatusResponse) => void">
+    Callback invoked when job status changes during polling. Receives the full job status response object with `job_id` and `status` fields.
+  </ParamField>
+
+  <ParamField path="signal" type="AbortSignal">
+    Optional `AbortSignal` for canceling the request and polling
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Promise<QueueJobResult>" type="union">
+  Promise that resolves with a discriminated union based on job outcome
+
+  ### Completed Job
+
+  <ResponseField name="status" type="'completed'" required>
+    Job completed successfully
+  </ResponseField>
+
+  <ResponseField name="job_id" type="string" required>
+    Unique identifier for the job
+  </ResponseField>
+
+  <ResponseField name="data" type="Blob" required>
+    The generated video as a Blob. Can be used with `URL.createObjectURL()` for playback.
+  </ResponseField>
+
+  ### Failed Job
+
+  <ResponseField name="status" type="'failed'" required>
+    Job failed during processing
+  </ResponseField>
+
+  <ResponseField name="job_id" type="string" required>
+    Unique identifier for the job
+  </ResponseField>
+
+  <ResponseField name="error" type="string" required>
+    Error message describing why the job failed
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { createDecartClient, models } from "@decart-ai/decart";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful sunset over the ocean"
+});
+
+if (result.status === "completed") {
+  const videoUrl = URL.createObjectURL(result.data);
+  videoElement.src = videoUrl;
+  console.log(`Video ready: ${videoUrl}`);
+} else {
+  console.error("Job failed:", result.error);
+}
+```
+
+### With Status Updates
+
+```typescript
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano",
+  onStatusChange: (job) => {
+    console.log(`Job ${job.job_id}: ${job.status}`);
+    // Update UI with progress
+    updateProgressBar(job.status);
+  }
+});
+
+if (result.status === "completed") {
+  console.log("Video generation completed!");
+  displayVideo(result.data);
+} else {
+  console.error("Generation failed:", result.error);
+  showErrorMessage(result.error);
+}
+```
+
+### Image-to-Video
+
+```typescript
+const file = document.querySelector('input[type="file"]').files[0];
+
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Animate with flowing water",
+  data: file,
+  onStatusChange: (job) => {
+    console.log(`Status: ${job.status}`);
+  }
+});
+
+if (result.status === "completed") {
+  const videoUrl = URL.createObjectURL(result.data);
+  document.querySelector("video").src = videoUrl;
+}
+```
+
+### Video-to-Video
+
+```typescript
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-restyle-v2v"),
+  prompt: "Convert to anime style",
+  data: "https://example.com/input-video.mp4",
+  onStatusChange: (job) => {
+    statusDisplay.textContent = `Status: ${job.status}`;
+  }
+});
+
+if (result.status === "completed") {
+  saveVideo(result.data, "output.mp4");
+} else {
+  alert(`Processing failed: ${result.error}`);
+}
+```
+
+### With Cancellation
+
+```typescript
+const controller = new AbortController();
+
+// Start job with ability to cancel
+const resultPromise = client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful sunset",
+  signal: controller.signal,
+  onStatusChange: (job) => {
+    console.log(`Current status: ${job.status}`);
+  }
+});
+
+// Cancel button handler
+cancelButton.onclick = () => {
+  controller.abort();
+  console.log("Job cancelled");
+};
+
+try {
+  const result = await resultPromise;
+  if (result.status === "completed") {
+    displayVideo(result.data);
+  }
+} catch (error) {
+  if (error.name === "AbortError") {
+    console.log("Job was cancelled by user");
+  } else {
+    console.error("Error:", error);
+  }
+}
+```
+
+### Discriminated Union Pattern
+
+```typescript
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A majestic mountain landscape"
+});
+
+// TypeScript knows the shape based on status
+switch (result.status) {
+  case "completed":
+    // TypeScript knows result.data is available here
+    console.log("Video blob size:", result.data.size);
+    playVideo(result.data);
+    break;
+  
+  case "failed":
+    // TypeScript knows result.error is available here
+    console.error("Failed:", result.error);
+    showErrorNotification(result.error);
+    break;
+}
+```
+
+## Error Handling
+
+```typescript
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "A serene lake at dawn"
+  });
+  
+  // Check the discriminated union
+  if (result.status === "completed") {
+    handleSuccess(result.data);
+  } else {
+    // Job failed but didn't throw
+    handleFailure(result.error);
+  }
+} catch (error) {
+  // Network errors, validation errors, or abort errors
+  if (error.name === "AbortError") {
+    console.log("Request was cancelled");
+  } else if (error.code === "INVALID_INPUT") {
+    console.error("Invalid inputs:", error.message);
+  } else if (error.code === "NETWORK_ERROR") {
+    console.error("Network error:", error.message);
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+## Notes
+
+- This method does **not throw** when a job fails during processing. Instead, it returns a result object with `status: "failed"` and an `error` field.
+- Exceptions are only thrown for network errors, invalid inputs, or when the request is aborted.
+- The `onStatusChange` callback is invoked immediately after submission with the initial status, and then periodically during polling.
+- Polling continues until the job reaches `"completed"` or `"failed"` status.
+- Only video models support the queue API. For image models, use `client.process.generate()`.
+- For more control over polling, use `client.queue.submit()` followed by manual status checks.
+
+## See Also
+
+- [submit()](/api/queue/submit) - Submit without polling
+- [status()](/api/queue/status) - Check job status
+- [result()](/api/queue/result) - Retrieve job result

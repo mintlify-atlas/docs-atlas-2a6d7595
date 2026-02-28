@@ -1,0 +1,386 @@
+---
+title: Error Handling
+description: Handle errors, implement retry strategies, and debug issues with the Decart AI SDK
+---
+
+The Decart AI SDK provides structured error handling with specific error codes for different failure scenarios. This guide shows you how to handle errors gracefully.
+
+## Error Types
+
+All SDK errors follow the `DecartSDKError` type:
+
+```ts
+type DecartSDKError = {
+  code: string;
+  message: string;
+  data?: Record<string, unknown>;
+  cause?: Error;
+};
+```
+
+## Error Codes
+
+The SDK defines these error codes:
+
+```ts
+export const ERROR_CODES = {
+  // General errors
+  INVALID_API_KEY: "INVALID_API_KEY",
+  INVALID_BASE_URL: "INVALID_BASE_URL",
+  PROCESSING_ERROR: "PROCESSING_ERROR",
+  INVALID_INPUT: "INVALID_INPUT",
+  INVALID_OPTIONS: "INVALID_OPTIONS",
+  MODEL_NOT_FOUND: "MODEL_NOT_FOUND",
+  
+  // Queue API errors
+  QUEUE_SUBMIT_ERROR: "QUEUE_SUBMIT_ERROR",
+  QUEUE_STATUS_ERROR: "QUEUE_STATUS_ERROR",
+  QUEUE_RESULT_ERROR: "QUEUE_RESULT_ERROR",
+  JOB_NOT_COMPLETED: "JOB_NOT_COMPLETED",
+  
+  // Token errors
+  TOKEN_CREATE_ERROR: "TOKEN_CREATE_ERROR",
+  
+  // WebRTC errors (real-time)
+  WEBRTC_WEBSOCKET_ERROR: "WEBRTC_WEBSOCKET_ERROR",
+  WEBRTC_ICE_ERROR: "WEBRTC_ICE_ERROR",
+  WEBRTC_TIMEOUT_ERROR: "WEBRTC_TIMEOUT_ERROR",
+  WEBRTC_SERVER_ERROR: "WEBRTC_SERVER_ERROR",
+  WEBRTC_SIGNALING_ERROR: "WEBRTC_SIGNALING_ERROR",
+};
+```
+
+## Basic Error Handling
+
+### Process API (Synchronous)
+
+```ts
+import { createDecartClient, models, ERROR_CODES } from "@decartai/sdk";
+
+try {
+  const client = createDecartClient({ apiKey: "your-api-key" });
+  
+  const blob = await client.process({
+    model: models.image("lucy-pro-t2i"),
+    prompt: "a beautiful sunset",
+  });
+  
+  console.log("Image generated successfully");
+} catch (error) {
+  // Type guard to check if it's a DecartSDKError
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const sdkError = error as { code: string; message: string };
+    
+    switch (sdkError.code) {
+      case ERROR_CODES.INVALID_API_KEY:
+        console.error("Invalid API key. Please check your credentials.");
+        break;
+      case ERROR_CODES.INVALID_INPUT:
+        console.error("Invalid input:", sdkError.message);
+        break;
+      case ERROR_CODES.PROCESSING_ERROR:
+        console.error("Processing failed:", sdkError.message);
+        break;
+      default:
+        console.error("Unexpected error:", sdkError.message);
+    }
+  } else {
+    console.error("Unknown error:", error);
+  }
+}
+```
+
+### Queue API (Async Jobs)
+
+```ts
+try {
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "a flying bird",
+  });
+  
+  console.log("Job submitted:", job.job_id);
+  
+  // Poll for status
+  const status = await client.queue.status(job.job_id);
+  console.log("Job status:", status.status);
+  
+  // Get result (only when completed)
+  if (status.status === "completed") {
+    const blob = await client.queue.result(job.job_id);
+    console.log("Video ready");
+  }
+} catch (error) {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const sdkError = error as { code: string; message: string; data?: any };
+    
+    switch (sdkError.code) {
+      case ERROR_CODES.QUEUE_SUBMIT_ERROR:
+        console.error("Failed to submit job:", sdkError.message);
+        if (sdkError.data?.status) {
+          console.error("HTTP status:", sdkError.data.status);
+        }
+        break;
+      case ERROR_CODES.JOB_NOT_COMPLETED:
+        console.error("Job not ready yet:", sdkError.message);
+        console.error("Current status:", sdkError.data?.currentStatus);
+        break;
+      default:
+        console.error("Queue error:", sdkError.message);
+    }
+  }
+}
+```
+
+## Real-Time Error Handling
+
+For real-time connections, handle errors via the event emitter:
+
+```ts
+import { createDecartClient, type DecartSDKError, ERROR_CODES } from "@decartai/sdk";
+
+const client = createDecartClient({ apiKey: "your-api-key" });
+
+try {
+  const realtimeClient = await client.realtime.connect(stream, {
+    model: models.realtime("mirage_v2"),
+    onRemoteStream: (transformedStream) => {
+      console.log("Receiving video stream");
+    },
+  });
+
+  // Subscribe to connection errors
+  realtimeClient.on("error", (error: DecartSDKError) => {
+    console.error("WebRTC error:", error.code, error.message);
+    
+    switch (error.code) {
+      case ERROR_CODES.WEBRTC_WEBSOCKET_ERROR:
+        console.error("WebSocket connection failed");
+        // Try reconnecting or show user message
+        break;
+        
+      case ERROR_CODES.WEBRTC_ICE_ERROR:
+        console.error("ICE connection failed (network issue)");
+        // Check network/firewall settings
+        break;
+        
+      case ERROR_CODES.WEBRTC_TIMEOUT_ERROR:
+        console.error("Connection timed out");
+        if (error.data?.timeoutMs) {
+          console.error(`Timeout after ${error.data.timeoutMs}ms`);
+        }
+        // Retry connection
+        break;
+        
+      case ERROR_CODES.WEBRTC_SERVER_ERROR:
+        console.error("Server error:", error.message);
+        // Server-side issue, wait and retry
+        break;
+        
+      default:
+        console.error("Unhandled WebRTC error");
+    }
+  });
+
+  // Monitor connection state
+  realtimeClient.on("connectionChange", (state) => {
+    console.log("Connection state:", state);
+    
+    if (state === "disconnected") {
+      console.log("Connection lost");
+    } else if (state === "reconnecting") {
+      console.log("Attempting to reconnect...");
+    }
+  });
+  
+} catch (error) {
+  console.error("Failed to establish connection:", error);
+}
+```
+
+## Diagnostic Events
+
+For real-time connections, you can also listen to diagnostic events:
+
+```ts
+realtimeClient.on("diagnostic", (event) => {
+  console.log("Diagnostic event:", event.name, event.data);
+  
+  if (event.name === "videoStall") {
+    if (event.data.stalled) {
+      console.warn("Video stream stalled");
+    } else {
+      console.log(`Video recovered after ${event.data.durationMs}ms`);
+    }
+  }
+});
+```
+
+## Retry Strategies
+
+### Exponential Backoff
+
+```ts
+async function generateWithRetry(
+  client: DecartClient,
+  options: ProcessOptions,
+  maxRetries = 3
+) {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await client.process(options);
+    } catch (error) {
+      lastError = error;
+      
+      // Don't retry on invalid input or API key
+      if (typeof error === 'object' && error !== null && 'code' in error) {
+        const sdkError = error as { code: string };
+        if (
+          sdkError.code === ERROR_CODES.INVALID_API_KEY ||
+          sdkError.code === ERROR_CODES.INVALID_INPUT
+        ) {
+          throw error;
+        }
+      }
+      
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      console.log(`Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
+// Usage
+try {
+  const blob = await generateWithRetry(client, {
+    model: models.image("lucy-pro-t2i"),
+    prompt: "a sunset",
+  });
+} catch (error) {
+  console.error("Failed after retries:", error);
+}
+```
+
+### Queue Polling with Timeout
+
+```ts
+async function pollJobWithTimeout(
+  client: DecartClient,
+  jobId: string,
+  timeoutMs = 300000 // 5 minutes
+) {
+  const startTime = Date.now();
+  
+  while (true) {
+    if (Date.now() - startTime > timeoutMs) {
+      throw new Error(`Job ${jobId} timed out after ${timeoutMs}ms`);
+    }
+    
+    try {
+      const status = await client.queue.status(jobId);
+      
+      if (status.status === "completed") {
+        return await client.queue.result(jobId);
+      }
+      
+      if (status.status === "failed") {
+        throw new Error(`Job failed: ${status.error}`);
+      }
+      
+      // Wait before polling again
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.error("Error polling job:", error);
+      throw error;
+    }
+  }
+}
+
+// Usage
+try {
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "flying bird",
+  });
+  
+  const blob = await pollJobWithTimeout(client, job.job_id);
+  console.log("Video ready");
+} catch (error) {
+  console.error("Video generation failed:", error);
+}
+```
+
+## React Error Boundaries
+
+For React applications, use error boundaries to catch rendering errors:
+
+```tsx
+import { Component, type ReactNode } from "react";
+
+interface Props {
+  children: ReactNode;
+  fallback: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("Error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+
+    return this.props.children;
+  }
+}
+
+// Usage
+function App() {
+  return (
+    <ErrorBoundary fallback={<div>Something went wrong</div>}>
+      <VideoStream prompt="anime style" />
+    </ErrorBoundary>
+  );
+}
+```
+
+## Best Practices
+
+1. **Always handle errors** - Never ignore try/catch blocks
+2. **Check error codes** - Use specific error codes to provide better feedback
+3. **Retry transient errors** - Network issues, timeouts, etc.
+4. **Don't retry permanent errors** - Invalid API keys, bad input, etc.
+5. **Log errors** - Keep track of failures for debugging
+6. **Show user-friendly messages** - Don't expose technical details to users
+7. **Monitor connection state** - React to state changes in real-time connections
+8. **Use diagnostic events** - Track video stalls and other issues
+9. **Set timeouts** - Don't wait indefinitely for responses
+10. **Clean up resources** - Disconnect clients, revoke object URLs, etc.
+
+## Next Steps
+
+- [React Integration](/guides/react-integration) - React-specific patterns
+- [Real-Time API Reference](/api/realtime/connect) - Connection API details
+- [Process API Reference](/api/process/generate) - Synchronous generation API
+- [Queue API Reference](/api/queue/submit) - Async job API

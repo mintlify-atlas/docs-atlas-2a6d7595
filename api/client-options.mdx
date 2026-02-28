@@ -1,0 +1,244 @@
+---
+title: DecartClientOptions
+description: Configuration options for the Decart API client
+---
+
+## Overview
+
+The `DecartClientOptions` type defines configuration options for creating a Decart API client. It supports two mutually exclusive modes: **proxy mode** and **direct mode**.
+
+## Type Definition
+
+```typescript
+type DecartClientOptions =
+  | {
+      proxy: string;
+      apiKey?: never;
+      baseUrl?: string;
+      realtimeBaseUrl?: string;
+      integration?: string;
+      logger?: Logger;
+      telemetry?: boolean;
+    }
+  | {
+      proxy?: never;
+      apiKey?: string;
+      baseUrl?: string;
+      realtimeBaseUrl?: string;
+      integration?: string;
+      logger?: Logger;
+      telemetry?: boolean;
+    };
+```
+
+## Configuration Modes
+
+### Proxy Mode
+
+Use proxy mode when you want to route API requests through your own server. This is ideal for client-side applications where you don't want to expose your API key.
+
+**Key characteristics:**
+- `proxy` is required
+- `apiKey` cannot be set (mutually exclusive)
+- Requests for process, queue, and tokens are routed through the proxy
+- Realtime (WebRTC) connections still require direct API access
+
+### Direct Mode
+
+Use direct mode for server-side applications or when you have secure API key management.
+
+**Key characteristics:**
+- `apiKey` can be provided (or uses `DECART_API_KEY` environment variable)
+- `proxy` cannot be set (mutually exclusive)
+- All requests go directly to Decart API servers
+
+## Fields
+
+<ParamField path="proxy" type="string">
+  **Proxy mode only.** URL or path of the proxy server. Can be:
+  - Full URL: `https://your-server.com/api/decart`
+  - Relative path: `/api/decart`
+  
+  When set, the client uses proxy mode and `apiKey` cannot be provided.
+
+  <Note>
+    Proxy mode only affects HTTP endpoints (process, queue, tokens). Realtime WebRTC connections always require direct API access with an API key.
+  </Note>
+</ParamField>
+
+<ParamField path="apiKey" type="string">
+  **Direct mode only.** API key for authentication. Cannot be used with `proxy`.
+  
+  If not provided, the client attempts to read from the `DECART_API_KEY` environment variable. In direct mode, an API key is required (either via this option or the environment variable).
+
+  <Warning>
+    Never expose your API key in client-side code. Use proxy mode or client tokens for client-side applications.
+  </Warning>
+</ParamField>
+
+<ParamField path="baseUrl" type="string" default="https://api.decart.ai">
+  Override the default API base URL for HTTP endpoints (process, queue, tokens).
+  
+  In proxy mode, this field is ignored and the `proxy` value is used as the base URL.
+  
+  Must be a valid URL string.
+</ParamField>
+
+<ParamField path="realtimeBaseUrl" type="string" default="wss://api3.decart.ai">
+  Override the default WebSocket base URL for realtime connections.
+  
+  This is used for WebRTC signaling and must be a valid WebSocket URL (starting with `ws://` or `wss://`).
+</ParamField>
+
+<ParamField path="integration" type="string">
+  Optional integration identifier for tracking and analytics purposes.
+  
+  This value is included in request headers and can be used to identify traffic from specific integrations or applications.
+</ParamField>
+
+<ParamField path="logger" type="Logger" default="noopLogger">
+  Custom logger instance for debugging and monitoring.
+  
+  You can use:
+  - `createConsoleLogger(level)` - Built-in console logger with log levels
+  - `noopLogger` - No-op logger (default)
+  - Custom implementation of the `Logger` interface
+
+  Example:
+  ```typescript
+  import { createConsoleLogger } from "@decart-ai/sdk";
+  
+  const client = createDecartClient({
+    apiKey: "your-api-key",
+    logger: createConsoleLogger("debug")
+  });
+  ```
+</ParamField>
+
+<ParamField path="telemetry" type="boolean" default="true">
+  Enable or disable telemetry reporting.
+  
+  Set to `false` to opt out of sending anonymous usage data. Telemetry helps improve the SDK but is optional.
+
+  Example:
+  ```typescript
+  const client = createDecartClient({
+    apiKey: "your-api-key",
+    telemetry: false
+  });
+  ```
+</ParamField>
+
+## Examples
+
+### Proxy Mode Configuration
+
+```typescript
+import { createDecartClient } from "@decart-ai/sdk";
+
+// Full proxy URL
+const client = createDecartClient({
+  proxy: "https://your-server.com/api/decart"
+});
+
+// Relative path (resolved against current origin)
+const client = createDecartClient({
+  proxy: "/api/decart"
+});
+```
+
+### Direct Mode Configuration
+
+```typescript
+import { createDecartClient } from "@decart-ai/sdk";
+
+// Explicit API key
+const client = createDecartClient({
+  apiKey: "your-api-key"
+});
+
+// Using environment variable (DECART_API_KEY)
+const client = createDecartClient();
+
+// With custom base URL
+const client = createDecartClient({
+  apiKey: "your-api-key",
+  baseUrl: "https://custom-api.example.com"
+});
+```
+
+### Advanced Configuration
+
+```typescript
+import { createDecartClient, createConsoleLogger } from "@decart-ai/sdk";
+
+const client = createDecartClient({
+  apiKey: "your-api-key",
+  baseUrl: "https://custom-api.example.com",
+  realtimeBaseUrl: "wss://custom-ws.example.com",
+  integration: "my-app-v1",
+  logger: createConsoleLogger("info"),
+  telemetry: false
+});
+```
+
+## Validation
+
+The SDK validates options using a Zod schema and enforces:
+
+1. **Mutual Exclusivity**: Cannot provide both `proxy` and `apiKey`
+2. **URL Format**: `baseUrl`, `realtimeBaseUrl`, and `proxy` (when full URL) must be valid URLs
+3. **Proxy Format**: `proxy` can be either a valid URL or a relative path starting with `/`
+4. **API Key Requirement**: In direct mode, either `apiKey` must be provided or `DECART_API_KEY` environment variable must be set
+
+### Error Examples
+
+```typescript
+// ❌ Error: Cannot provide both proxy and apiKey
+const client = createDecartClient({
+  proxy: "https://proxy.example.com",
+  apiKey: "your-api-key" // Throws error
+});
+
+// ❌ Error: Invalid URL format
+const client = createDecartClient({
+  baseUrl: "not-a-valid-url" // Throws error
+});
+
+// ❌ Error: API key required in direct mode
+const client = createDecartClient({
+  // No apiKey and no DECART_API_KEY env var
+}); // Throws error
+
+// ✅ Valid: Proxy mode
+const client = createDecartClient({
+  proxy: "https://proxy.example.com"
+});
+
+// ✅ Valid: Direct mode with API key
+const client = createDecartClient({
+  apiKey: "your-api-key"
+});
+```
+
+## Proxy Mode vs Direct Mode Comparison
+
+| Feature | Proxy Mode | Direct Mode |
+|---------|-----------|-------------|
+| **API Key Required** | No | Yes (option or env var) |
+| **Process API** | Via proxy | Direct to API |
+| **Queue API** | Via proxy | Direct to API |
+| **Tokens API** | Via proxy | Direct to API |
+| **Realtime API** | Direct to API* | Direct to API |
+| **Use Case** | Client-side apps | Server-side apps |
+| **Security** | API key hidden | API key must be secure |
+
+<Note>
+  *Realtime WebRTC connections always require direct API access even in proxy mode, because WebRTC signaling happens over WebSocket connections that cannot be proxied in the same way as HTTP requests.
+</Note>
+
+## See Also
+
+- [createDecartClient()](/api/create-client) - Factory function reference
+- [Logger](/api/types/errors) - Logger interface and utilities
+- [Error Codes](/api/types/errors) - SDK error codes and handling

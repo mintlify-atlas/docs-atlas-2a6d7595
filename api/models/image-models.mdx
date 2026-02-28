@@ -1,0 +1,488 @@
+---
+title: "Image Models"
+description: "Synchronous image generation models for instant results"
+---
+
+Image models provide high-quality image generation through the process API. These models support both synchronous (instant) and asynchronous (queue) processing.
+
+## Available Models
+
+<CardGroup cols={2}>
+  <Card title="lucy-pro-t2i" icon="text">
+    Text-to-image (Pro quality)
+  </Card>
+  <Card title="lucy-pro-i2i" icon="image">
+    Image-to-image (Pro quality)
+  </Card>
+</CardGroup>
+
+## Model Specifications
+
+| Model | Default Resolution | Supported Resolutions | Processing Mode |
+|-------|-------------------|----------------------|----------------|
+| `lucy-pro-t2i` | 720p (1280x704) | 720p, 480p | Sync + Async |
+| `lucy-pro-i2i` | 720p (1280x704) | 720p, 480p | Sync + Async |
+
+## Usage
+
+### Accessing Models
+
+Use the `models.image()` factory function to access image model definitions:
+
+```typescript
+import { models } from '@decart-ai/sdk';
+
+const t2iModel = models.image('lucy-pro-t2i');
+const i2iModel = models.image('lucy-pro-i2i');
+```
+
+### Model Definition Properties
+
+```typescript
+interface ImageModelDefinition {
+  name: string;           // Model identifier
+  urlPath: string;        // Process API endpoint (sync)
+  queueUrlPath: string;   // Queue API endpoint (async)
+  fps: number;            // Not applicable for images
+  width: number;          // Image width at 720p (1280)
+  height: number;         // Image height at 720p (704)
+  inputSchema: ZodObject; // Input validation schema
+}
+```
+
+## Input Requirements
+
+### lucy-pro-t2i (Text-to-Image)
+
+Generate images from text prompts.
+
+```typescript
+interface LucyProT2IInput {
+  prompt: string;              // 1-1000 characters
+  seed?: number;               // Optional seed for reproducibility
+  resolution?: "720p" | "480p"; // Default: "720p"
+  orientation?: string;        // Optional orientation
+}
+```
+
+**Properties:**
+- **prompt**: Detailed description of the desired image (1-1000 characters)
+- **seed**: Random seed for reproducible results (optional)
+- **resolution**: Output resolution - "720p" (1280x704) or "480p" (default: "720p")
+- **orientation**: Image orientation (optional)
+
+### lucy-pro-i2i (Image-to-Image)
+
+Transform existing images with prompts.
+
+```typescript
+interface LucyProI2IInput {
+  prompt: string;              // 1-1000 characters
+  data: FileInput;             // Input image (File, Blob, URL, etc.)
+  seed?: number;               // Optional seed
+  resolution?: "720p" | "480p"; // Default: "720p"
+  enhance_prompt?: boolean;    // Enhance prompt with AI
+}
+```
+
+**Properties:**
+- **prompt**: Description of desired transformation (1-1000 characters)
+- **data**: Input image in various formats (File, Blob, ReadableStream, URL, string URL)
+- **seed**: Random seed for reproducible results (optional)
+- **resolution**: Output resolution - "720p" (1280x704) or "480p" (default: "720p")
+- **enhance_prompt**: Let AI enhance your prompt for better results (optional)
+
+## File Input Types
+
+Image models accept multiple file input formats:
+
+```typescript
+type FileInput = 
+  | File              // Browser File object
+  | Blob              // Blob data
+  | ReadableStream    // Stream
+  | URL               // URL object
+  | string            // URL string
+  | {                 // React Native format
+      uri: string;
+      type: string;
+      name: string;
+    };
+```
+
+## Synchronous Processing
+
+Image models support instant synchronous processing via the process API:
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Generate image synchronously (instant result)
+const result = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  input: {
+    prompt: "A serene mountain landscape at sunset",
+    resolution: "720p",
+    seed: 42,
+  },
+});
+
+// Result contains the image data
+console.log('Image URL:', result.url);
+```
+
+## Asynchronous Processing
+
+For longer processing times or background jobs, use the queue API:
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit job to queue
+const job = await client.queue.submit({
+  model: models.image('lucy-pro-t2i'),
+  input: {
+    prompt: "A futuristic cityscape with flying cars",
+    resolution: "720p",
+  },
+});
+
+console.log('Job ID:', job.id);
+
+// Wait for completion
+const result = await client.queue.waitForCompletion(job.id);
+
+if (result.status === 'completed') {
+  console.log('Image URL:', result.output.url);
+}
+```
+
+## Examples
+
+### Text-to-Image Generation
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Generate image from text
+const result = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  input: {
+    prompt: "A magical forest with glowing mushrooms and fireflies",
+    resolution: "720p",
+    orientation: "landscape",
+  },
+});
+
+// Download or display the image
+const imageUrl = result.url;
+const imageBlob = await fetch(imageUrl).then(r => r.blob());
+```
+
+### Image-to-Image Transformation
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Transform an existing image
+const inputImage = await fetch('https://example.com/photo.jpg')
+  .then(r => r.blob());
+
+const result = await client.process({
+  model: models.image('lucy-pro-i2i'),
+  input: {
+    prompt: "Transform into a watercolor painting style",
+    data: inputImage,
+    resolution: "720p",
+    enhance_prompt: true,
+  },
+});
+
+console.log('Transformed image:', result.url);
+```
+
+### Using Local Files
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+import { readFile } from 'fs/promises';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Read local image file
+const imageBuffer = await readFile('./input.jpg');
+const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
+
+const result = await client.process({
+  model: models.image('lucy-pro-i2i'),
+  input: {
+    prompt: "Convert to anime style",
+    data: imageBlob,
+    resolution: "720p",
+  },
+});
+
+console.log('Result:', result.url);
+```
+
+### Batch Processing with Seeds
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const prompt = "A cozy coffee shop interior";
+
+// Generate multiple variations with different seeds
+const variations = await Promise.all(
+  [1, 2, 3, 4, 5].map(seed =>
+    client.process({
+      model: models.image('lucy-pro-t2i'),
+      input: {
+        prompt,
+        seed,
+        resolution: "720p",
+      },
+    })
+  )
+);
+
+console.log('Generated variations:', variations.map(v => v.url));
+```
+
+### Using URL Inputs
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Use image URL directly
+const result = await client.process({
+  model: models.image('lucy-pro-i2i'),
+  input: {
+    prompt: "Add dramatic sunset lighting",
+    data: "https://example.com/landscape.jpg",
+    resolution: "720p",
+  },
+});
+
+console.log('Result:', result.url);
+```
+
+### React Native Example
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+import * as ImagePicker from 'expo-image-picker';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Pick image from gallery
+const pickerResult = await ImagePicker.launchImageLibraryAsync({
+  mediaTypes: ImagePicker.MediaTypeOptions.Images,
+});
+
+if (!pickerResult.canceled) {
+  const result = await client.process({
+    model: models.image('lucy-pro-i2i'),
+    input: {
+      prompt: "Enhance colors and details",
+      data: {
+        uri: pickerResult.assets[0].uri,
+        type: 'image/jpeg',
+        name: 'photo.jpg',
+      },
+      resolution: "720p",
+    },
+  });
+  
+  console.log('Enhanced image:', result.url);
+}
+```
+
+## Type Definitions
+
+```typescript
+type ImageModels = 
+  | "lucy-pro-t2i" 
+  | "lucy-pro-i2i";
+
+function models.image<T extends ImageModels>(
+  model: T
+): ModelDefinition<T>;
+
+interface ProcessResult {
+  url: string;           // URL to generated image
+  id: string;            // Generation ID
+  model: string;         // Model name used
+  status: 'completed';   // Always completed for sync
+}
+
+interface QueueJob {
+  id: string;            // Job ID
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  output?: {
+    url: string;         // Image URL when completed
+  };
+  error?: string;        // Error message if failed
+}
+```
+
+## Performance Considerations
+
+- **Sync vs Async**: Use sync (process API) for immediate results, async (queue API) for background jobs
+- **Resolution**: 720p provides highest quality, 480p is faster and uses less bandwidth
+- **Prompt Quality**: Detailed, specific prompts (50-200 chars) yield best results
+- **Seeds**: Use same seed for reproducible results across generations
+- **Enhance Prompt**: Enable for I2I transformations to improve interpretation
+
+## Best Practices
+
+1. **Choose the right API**:
+   - Use `client.process()` for interactive applications needing instant results
+   - Use `client.queue.submit()` for batch processing or background jobs
+
+2. **Optimize prompts**:
+   - Be specific and descriptive (e.g., "sunset over ocean" → "vibrant orange sunset over calm ocean with distant sailboats")
+   - Include style keywords (e.g., "photorealistic", "watercolor", "anime style")
+   - Use 50-200 characters for optimal results
+
+3. **Use seeds effectively**:
+   - Set fixed seed when iterating on prompts to isolate prompt changes
+   - Generate variations by changing seed while keeping prompt constant
+   - Document seeds for reproducible results
+
+4. **Handle resolution appropriately**:
+   - Use 720p for production/final output
+   - Use 480p for prototyping or when bandwidth is limited
+
+5. **Leverage prompt enhancement**:
+   - Enable `enhance_prompt` for I2I to improve transformation quality
+   - Useful when working with simple or vague prompts
+
+## Error Handling
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+try {
+  const result = await client.process({
+    model: models.image('lucy-pro-t2i'),
+    input: {
+      prompt: "A beautiful landscape",
+      resolution: "720p",
+    },
+  });
+  
+  console.log('Success:', result.url);
+} catch (error) {
+  if (error.code === 'VALIDATION_ERROR') {
+    console.error('Invalid input:', error.message);
+    // Handle validation errors (e.g., prompt too long)
+  } else if (error.code === 'AUTHENTICATION_ERROR') {
+    console.error('Invalid API key');
+  } else if (error.code === 'RATE_LIMIT_ERROR') {
+    console.error('Rate limit exceeded');
+  } else if (error.code === 'GENERATION_FAILED') {
+    console.error('Generation failed:', error.message);
+  } else {
+    console.error('Unexpected error:', error);
+  }
+}
+```
+
+## Queue API Error Handling
+
+```typescript
+try {
+  const job = await client.queue.submit({
+    model: models.image('lucy-pro-t2i'),
+    input: {
+      prompt: "A serene landscape",
+    },
+  });
+  
+  const result = await client.queue.waitForCompletion(job.id, {
+    pollingInterval: 1000,  // Check every second
+    timeout: 60000,         // Timeout after 1 minute
+  });
+  
+  if (result.status === 'completed') {
+    console.log('Image generated:', result.output.url);
+  } else if (result.status === 'failed') {
+    console.error('Generation failed:', result.error);
+  }
+} catch (error) {
+  if (error.code === 'TIMEOUT') {
+    console.error('Job timed out after 1 minute');
+  } else if (error.code === 'JOB_NOT_FOUND') {
+    console.error('Job does not exist');
+  } else {
+    console.error('Unexpected error:', error);
+  }
+}
+```
+
+## Resolution Details
+
+### 720p Resolution
+- **Dimensions**: 1280x704 pixels
+- **Aspect Ratio**: ~16:9
+- **Best for**: Production use, high-quality output
+- **File size**: Larger (~2-5MB)
+
+### 480p Resolution
+- **Dimensions**: ~853x480 pixels
+- **Aspect Ratio**: ~16:9
+- **Best for**: Prototyping, previews, bandwidth-limited scenarios
+- **File size**: Smaller (~500KB-2MB)
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Real-time Models" href="/api/models/realtime-models" icon="bolt">
+    Real-time streaming models
+  </Card>
+  <Card title="Video Models" href="/api/models/video-models" icon="film">
+    Video generation models
+  </Card>
+  <Card title="Process Client" href="/api/process/generate" icon="bolt">
+    Process client API reference
+  </Card>
+  <Card title="Queue Client" href="/api/queue/submit" icon="list">
+    Queue client API reference
+  </Card>
+  <Card title="Image Generation Guide" href="/guides/image-generation" icon="image">
+    Image generation guide
+  </Card>
+</CardGroup>

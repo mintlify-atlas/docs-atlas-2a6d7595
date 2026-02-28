@@ -1,0 +1,385 @@
+---
+title: 'Authentication'
+description: 'Understanding API keys, client tokens, and proxy mode for secure authentication'
+---
+
+## Overview
+
+The Decart SDK supports three authentication approaches:
+
+1. **API Key Authentication** - Direct API access with your account API key
+2. **Client Tokens** - Short-lived tokens safe for client-side usage
+3. **Proxy Mode** - Route requests through your server to hide API keys
+
+Choose the approach that best fits your security requirements and architecture.
+
+## API Key Authentication
+
+API keys provide full access to the Decart API and should be kept secure.
+
+### Getting Your API Key
+
+You can obtain your API key from the [Decart dashboard](https://platform.decart.ai).
+
+### Using API Keys
+
+There are two ways to provide your API key:
+
+<Tabs>
+  <Tab title="Environment Variable">
+    Set the `DECART_API_KEY` environment variable:
+
+    ```bash
+    export DECART_API_KEY="your-api-key"
+    ```
+
+    Then create the client without explicitly passing the key:
+
+    ```typescript
+    import { createDecartClient } from '@decart-ai/sdk';
+
+    const client = createDecartClient();
+    ```
+  </Tab>
+
+  <Tab title="Explicit Parameter">
+    Pass the API key directly when creating the client:
+
+    ```typescript
+    import { createDecartClient } from '@decart-ai/sdk';
+
+    const client = createDecartClient({ 
+      apiKey: 'your-api-key' 
+    });
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Never expose your API key in client-side code or commit it to version control. Use environment variables or secure secret management.
+</Warning>
+
+## Client Tokens
+
+Client tokens are short-lived API keys designed for secure client-side usage. They provide temporary access without exposing your main API key.
+
+### How Client Tokens Work
+
+1. Your server creates a client token using your API key
+2. The server sends the client token to your client application
+3. The client uses the token to make API requests
+4. The token automatically expires after a set duration
+
+### Creating Client Tokens
+
+Client tokens are created server-side using the `tokens.create()` method:
+
+```typescript title="server.ts"
+import { createDecartClient } from '@decart-ai/sdk';
+
+// Server-side: Create client with your API key
+const serverClient = createDecartClient({ 
+  apiKey: process.env.DECART_API_KEY 
+});
+
+// Generate a client token
+const token = await serverClient.tokens.create();
+
+console.log(token);
+// {
+//   apiKey: 'ek_abc123...', 
+//   expiresAt: '2024-12-15T12:10:00Z'
+// }
+```
+
+### TypeScript Signature
+
+```typescript
+type CreateTokenOptions = {
+  metadata?: Record<string, unknown>;
+};
+
+type CreateTokenResponse = {
+  apiKey: string;    // The client token (starts with 'ek_')
+  expiresAt: string; // ISO 8601 timestamp when token expires
+};
+
+type TokensClient = {
+  create: (options?: CreateTokenOptions) => Promise<CreateTokenResponse>;
+};
+```
+
+### Using Client Tokens
+
+Once created, send the client token to your client application:
+
+```typescript title="client.ts"
+import { createDecartClient } from '@decart-ai/sdk';
+
+// Fetch token from your server
+const response = await fetch('/api/tokens');
+const { apiKey } = await response.json();
+
+// Create client with the client token
+const client = createDecartClient({ apiKey });
+
+// Use the client normally
+const stream = await client.realtime.connect({
+  model: models.realtime('mirage'),
+  onRemoteStream: (stream) => {
+    videoElement.srcObject = stream;
+  }
+});
+```
+
+### Adding Metadata
+
+You can attach custom metadata to client tokens for tracking or authorization:
+
+```typescript
+const token = await serverClient.tokens.create({
+  metadata: {
+    userId: 'user_123',
+    role: 'viewer',
+    customData: { /* ... */ }
+  }
+});
+```
+
+### Full Example: Next.js API Route
+
+```typescript title="app/api/tokens/route.ts"
+import { createDecartClient } from '@decart-ai/sdk';
+import { NextResponse } from 'next/server';
+
+export async function POST(request: Request) {
+  // Optional: Add your own auth checks here
+  const session = await getServerSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: 'Unauthorized' }, 
+      { status: 401 }
+    );
+  }
+
+  // Create client token
+  const serverClient = createDecartClient({ 
+    apiKey: process.env.DECART_API_KEY 
+  });
+  
+  const token = await serverClient.tokens.create({
+    metadata: {
+      userId: session.user.id,
+      email: session.user.email
+    }
+  });
+
+  return NextResponse.json(token);
+}
+```
+
+```typescript title="components/VideoGenerator.tsx"
+'use client';
+
+import { createDecartClient, models } from '@decart-ai/sdk';
+import { useEffect, useRef } from 'react';
+
+export function VideoGenerator() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    async function connect() {
+      // Fetch client token from your API route
+      const response = await fetch('/api/tokens', { method: 'POST' });
+      const { apiKey } = await response.json();
+
+      // Create client with token
+      const client = createDecartClient({ apiKey });
+
+      // Connect to realtime stream
+      await client.realtime.connect({
+        model: models.realtime('mirage'),
+        onRemoteStream: (stream) => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        }
+      });
+    }
+
+    connect();
+  }, []);
+
+  return <video ref={videoRef} autoPlay playsInline />;
+}
+```
+
+## Proxy Mode
+
+Proxy mode routes all HTTP requests through your server, eliminating the need to expose any API keys on the client side.
+
+### How Proxy Mode Works
+
+1. Your client creates a Decart client in proxy mode
+2. The client makes requests to your server proxy endpoint
+3. Your server forwards requests to the Decart API with your API key
+4. Responses are sent back to the client
+
+### Setting Up a Proxy
+
+Create a server endpoint that forwards requests to Decart:
+
+```typescript title="app/api/decart/[...path]/route.ts"
+import { createDecartClient } from '@decart-ai/sdk';
+import { NextRequest, NextResponse } from 'next/server';
+
+const serverClient = createDecartClient({ 
+  apiKey: process.env.DECART_API_KEY 
+});
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { path: string[] } }
+) {
+  const path = params.path.join('/');
+  const body = await request.json();
+
+  // Forward the request to Decart API
+  const response = await fetch(`https://api.decart.ai/${path}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.DECART_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await response.blob();
+  return new NextResponse(data, {
+    headers: {
+      'Content-Type': response.headers.get('Content-Type') || 'application/octet-stream'
+    }
+  });
+}
+```
+
+### Using Proxy Mode
+
+On the client side, create the client in proxy mode:
+
+```typescript title="client.ts"
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+// Full URL
+const client = createDecartClient({ 
+  proxy: 'https://your-server.com/api/decart' 
+});
+
+// Or relative path
+const client = createDecartClient({ 
+  proxy: '/api/decart' 
+});
+
+// Use process and queue clients normally
+const blob = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'A beautiful landscape'
+});
+```
+
+### Proxy Mode Limitations
+
+<Warning>
+The **realtime client** does not support proxy mode because WebRTC connections cannot be proxied through HTTP. Realtime connections always require direct API access with an API key or client token.
+</Warning>
+
+```typescript
+// This will work (process and queue)
+const client = createDecartClient({ proxy: '/api/decart' });
+await client.process({ /* ... */ });  // ✅ Works
+await client.queue.submit({ /* ... */ });  // ✅ Works
+
+// This requires an API key (realtime)
+await client.realtime.connect({ /* ... */ });  // ❌ Fails - needs API key
+```
+
+For realtime connections in a client-side environment, use client tokens instead:
+
+```typescript
+// Fetch a client token from your server
+const response = await fetch('/api/tokens', { method: 'POST' });
+const { apiKey } = await response.json();
+
+// Create client with the token for realtime access
+const client = createDecartClient({ apiKey });
+await client.realtime.connect({ /* ... */ });  // ✅ Works
+```
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Never Expose API Keys" icon="shield-halved">
+    Don't include API keys in client-side code or commit them to version control. Use environment variables and secret management.
+  </Card>
+  
+  <Card title="Use Client Tokens" icon="clock">
+    For client-side applications, always use short-lived client tokens instead of exposing your API key.
+  </Card>
+  
+  <Card title="Implement Auth Checks" icon="user-shield">
+    Add authentication and authorization to your token creation endpoint to prevent abuse.
+  </Card>
+  
+  <Card title="Monitor Usage" icon="chart-line">
+    Use metadata to track token usage and identify suspicious activity.
+  </Card>
+</CardGroup>
+
+## Choosing an Approach
+
+| Use Case | Recommended Approach |
+|----------|---------------------|
+| Server-side application | API Key (environment variable) |
+| Client-side with realtime | Client Tokens |
+| Client-side with process/queue | Proxy Mode or Client Tokens |
+| React Native mobile app | Client Tokens |
+| Static site | Proxy Mode |
+
+## Error Handling
+
+Handle authentication errors appropriately:
+
+```typescript
+import { createDecartClient, ERROR_CODES } from '@decart-ai/sdk';
+
+try {
+  const client = createDecartClient({ apiKey: 'invalid' });
+  await client.process({ /* ... */ });
+} catch (error) {
+  if (error.code === ERROR_CODES.INVALID_API_KEY) {
+    console.error('Invalid API key');
+  } else if (error.code === ERROR_CODES.TOKEN_CREATE_ERROR) {
+    console.error('Failed to create client token');
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="DecartClient" icon="code" href="/concepts/client">
+    Learn about the client structure and configuration
+  </Card>
+  
+  <Card title="Models" icon="brain" href="/concepts/models">
+    Explore available models and their capabilities
+  </Card>
+  
+  <Card title="Realtime Guide" icon="video" href="/guides/realtime">
+    Build interactive real-time video experiences
+  </Card>
+  
+  <Card title="Process Guide" icon="image" href="/guides/process">
+    Generate images synchronously
+  </Card>
+</CardGroup>

@@ -1,0 +1,288 @@
+---
+title: React Integration
+description: Learn how to integrate the Decart AI SDK with React applications
+---
+
+The Decart AI SDK works seamlessly with React for building real-time video applications. This guide shows you how to use the SDK with React hooks and manage WebRTC connections properly.
+
+## Installation
+
+```bash
+npm install @decartai/sdk
+# or
+pnpm add @decartai/sdk
+# or
+yarn add @decartai/sdk
+```
+
+## Basic Setup
+
+For React applications, you'll typically create a component that manages the WebRTC connection and video streams.
+
+### Video Stream Component
+
+Here's a complete example of a React component that connects to the Decart real-time API:
+
+```tsx
+import { createDecartClient, type DecartSDKError, models, type RealTimeClient } from "@decartai/sdk";
+import { useEffect, useRef, useState } from "react";
+
+interface VideoStreamProps {
+  prompt: string;
+}
+
+export function VideoStream({ prompt }: VideoStreamProps) {
+  const inputRef = useRef<HTMLVideoElement>(null);
+  const outputRef = useRef<HTMLVideoElement>(null);
+  const realtimeClientRef = useRef<RealTimeClient | null>(null);
+  const [status, setStatus] = useState<string>("idle");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function start() {
+      try {
+        const model = models.realtime("mirage_v2");
+
+        setStatus("requesting camera...");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            frameRate: model.fps,
+            width: model.width,
+            height: model.height,
+          },
+        });
+
+        if (!mounted) return;
+
+        if (inputRef.current) {
+          inputRef.current.srcObject = stream;
+        }
+
+        setStatus("connecting...");
+
+        const apiKey = import.meta.env.VITE_DECART_API_KEY;
+        if (!apiKey) {
+          throw new Error("DECART_API_KEY is not set");
+        }
+
+        const client = createDecartClient({ apiKey });
+
+        const realtimeClient = await client.realtime.connect(stream, {
+          model,
+          onRemoteStream: (transformedStream: MediaStream) => {
+            if (outputRef.current) {
+              outputRef.current.srcObject = transformedStream;
+            }
+          },
+          initialState: {
+            prompt: { text: prompt, enhance: true },
+          },
+        });
+
+        realtimeClientRef.current = realtimeClient;
+
+        // Subscribe to events
+        realtimeClient.on("connectionChange", (state) => {
+          setStatus(state);
+        });
+
+        realtimeClient.on("error", (error: DecartSDKError) => {
+          setStatus(`error: ${error.message}`);
+        });
+      } catch (error) {
+        setStatus(`error: ${error}`);
+      }
+    }
+
+    start();
+
+    return () => {
+      mounted = false;
+      realtimeClientRef.current?.disconnect();
+    };
+  }, []);
+
+  // Update prompt when it changes
+  useEffect(() => {
+    if (realtimeClientRef.current?.isConnected()) {
+      realtimeClientRef.current.setPrompt(prompt, { enhance: true });
+    }
+  }, [prompt]);
+
+  return (
+    <div>
+      <p>Status: {status}</p>
+      <div style={{ display: "flex", gap: "1rem" }}>
+        <div>
+          <h3>Input</h3>
+          <video ref={inputRef} autoPlay muted playsInline width={400} />
+        </div>
+        <div>
+          <h3>Styled Output</h3>
+          <video ref={outputRef} autoPlay playsInline width={400} />
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### Using the Component
+
+```tsx
+import { useState } from "react";
+import { VideoStream } from "./components/VideoStream";
+
+function App() {
+  const [prompt, setPrompt] = useState("anime style, vibrant colors");
+
+  return (
+    <div style={{ padding: "2rem", fontFamily: "system-ui" }}>
+      <h1>Decart Realtime Demo</h1>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Style prompt:
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            style={{ marginLeft: "0.5rem", width: "300px", padding: "0.5rem" }}
+          />
+        </label>
+      </div>
+
+      <VideoStream prompt={prompt} />
+    </div>
+  );
+}
+
+export default App;
+```
+
+## Key Patterns
+
+### 1. Using Refs for Video Elements
+
+Use `useRef` to get direct access to video elements for setting `srcObject`:
+
+```tsx
+const inputRef = useRef<HTMLVideoElement>(null);
+const outputRef = useRef<HTMLVideoElement>(null);
+
+// Later in the code
+if (inputRef.current) {
+  inputRef.current.srcObject = stream;
+}
+```
+
+### 2. Storing the Client in a Ref
+
+Store the realtime client in a ref to access it outside of the setup effect:
+
+```tsx
+const realtimeClientRef = useRef<RealTimeClient | null>(null);
+
+// Access it in other effects
+if (realtimeClientRef.current?.isConnected()) {
+  realtimeClientRef.current.setPrompt(prompt, { enhance: true });
+}
+```
+
+### 3. Cleanup on Unmount
+
+Always disconnect the client when the component unmounts:
+
+```tsx
+useEffect(() => {
+  let mounted = true;
+
+  async function start() {
+    // ... connection logic
+  }
+
+  start();
+
+  return () => {
+    mounted = false;
+    realtimeClientRef.current?.disconnect();
+  };
+}, []);
+```
+
+### 4. State Management
+
+Use React state to track connection status and errors:
+
+```tsx
+const [status, setStatus] = useState<string>("idle");
+
+realtimeClient.on("connectionChange", (state) => {
+  setStatus(state);
+});
+
+realtimeClient.on("error", (error: DecartSDKError) => {
+  setStatus(`error: ${error.message}`);
+});
+```
+
+### 5. Updating Model State
+
+Use a separate effect to update the model state when props change:
+
+```tsx
+useEffect(() => {
+  if (realtimeClientRef.current?.isConnected()) {
+    realtimeClientRef.current.setPrompt(prompt, { enhance: true });
+  }
+}, [prompt]);
+```
+
+## Connection States
+
+The SDK emits the following connection states:
+
+- `connecting` - Initial connection in progress
+- `connected` - WebRTC connection established
+- `generating` - Model is generating frames
+- `reconnecting` - Attempting to reconnect after disconnection
+- `disconnected` - Connection closed
+
+## Best Practices
+
+1. **Always cleanup**: Disconnect the client in the cleanup function to prevent memory leaks
+2. **Check if mounted**: Use a `mounted` flag to avoid state updates on unmounted components
+3. **Check connection status**: Before calling methods like `setPrompt()`, check if the client is connected
+4. **Use the model object**: Get video constraints from the model definition for optimal quality
+5. **Handle errors**: Subscribe to the `error` event to handle WebRTC errors gracefully
+
+## API Key Management
+
+### Development (Direct API Key)
+
+```tsx
+const apiKey = import.meta.env.VITE_DECART_API_KEY;
+const client = createDecartClient({ apiKey });
+```
+
+### Production (Token from Backend)
+
+For production, fetch a client token from your backend:
+
+```tsx
+const tokenResponse = await fetch("/api/realtime-token", {
+  method: "POST",
+});
+const { apiKey } = await tokenResponse.json();
+
+const client = createDecartClient({ apiKey });
+```
+
+See [Next.js Integration](/guides/nextjs-integration) and [Server-Side Usage](/guides/server-side) for more details on token generation.
+
+## Next Steps
+
+- [Next.js Integration](/guides/nextjs-integration) - Learn how to use the SDK with Next.js App Router
+- [Error Handling](/guides/error-handling) - Handle errors and connection issues
+- [Real-Time API Reference](/api/realtime/connect) - Detailed API documentation

@@ -1,0 +1,357 @@
+---
+title: Server-Side Usage
+description: Use the Decart AI SDK on the server with Node.js, Express, Hono, and Edge runtimes
+---
+
+The Decart AI SDK works in any JavaScript runtime, including Node.js, Bun, Deno, and edge runtimes like Cloudflare Workers. This guide shows server-side usage patterns.
+
+## Installation
+
+```bash
+npm install @decartai/sdk
+```
+
+## When to Use Server-Side
+
+Use the SDK server-side for:
+
+- **Securing your API key** - Keep credentials out of client code
+- **Image/video generation APIs** - Build REST endpoints for generation
+- **Token generation** - Create client tokens for real-time features
+- **Batch processing** - Process multiple requests efficiently
+- **Edge functions** - Deploy globally on edge runtimes
+
+## Express API Example
+
+Here's a complete Express server with image and video generation endpoints:
+
+```ts
+import "dotenv/config";
+import express from "express";
+import { createDecartClient, models } from "@decartai/sdk";
+
+const app = express();
+app.use(express.json());
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY!,
+});
+
+// Generate image from text (sync - returns immediately)
+app.post("/api/image/generate", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    const blob = await client.process({
+      model: models.image("lucy-pro-t2i"),
+      prompt,
+    });
+
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "image/png");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Transform image (sync - returns immediately)
+app.post("/api/image/transform", async (req, res) => {
+  try {
+    const { prompt, imageUrl } = req.body;
+
+    const blob = await client.process({
+      model: models.image("lucy-pro-i2i"),
+      prompt,
+      data: imageUrl,
+    });
+
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "image/png");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Submit video generation job (async - returns job ID)
+app.post("/api/video/generate", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    const job = await client.queue.submit({
+      model: models.video("lucy-pro-t2v"),
+      prompt,
+    });
+
+    res.json({ jobId: job.job_id, status: job.status });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Check video job status
+app.get("/api/video/status/:jobId", async (req, res) => {
+  try {
+    const status = await client.queue.status(req.params.jobId);
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Get video result (when completed)
+app.get("/api/video/result/:jobId", async (req, res) => {
+  try {
+    const blob = await client.queue.result(req.params.jobId);
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "video/mp4");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Generate video with automatic polling (convenience endpoint)
+app.post("/api/video/generate-sync", async (req, res) => {
+  try {
+    const { prompt, videoUrl } = req.body;
+
+    const result = await client.queue.submitAndPoll({
+      model: videoUrl ? models.video("lucy-pro-v2v") : models.video("lucy-pro-t2v"),
+      prompt,
+      ...(videoUrl && { data: videoUrl }),
+    });
+
+    if (result.status === "completed") {
+      const buffer = Buffer.from(await result.data.arrayBuffer());
+      res.setHeader("Content-Type", "video/mp4");
+      res.send(buffer);
+    } else {
+      res.status(500).json({ error: result.error });
+    }
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+});
+```
+
+## Hono Edge Runtime Example
+
+Hono works great for edge runtimes like Cloudflare Workers:
+
+```ts
+import { createDecartClient, type DecartClient, models } from "@decartai/sdk";
+import { Hono } from "hono";
+
+type Bindings = {
+  DECART_API_KEY: string;
+};
+
+type Variables = {
+  decart: DecartClient;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+// Middleware to create and share the Decart client
+app.use("*", async (c, next) => {
+  const client = createDecartClient({
+    apiKey: c.env.DECART_API_KEY,
+  });
+  c.set("decart", client);
+  await next();
+});
+
+// Text-to-image generation
+app.post("/api/image/generate", async (c) => {
+  const client = c.get("decart");
+  const { prompt } = await c.req.json<{ prompt: string }>();
+
+  const blob = await client.process({
+    model: models.image("lucy-pro-t2i"),
+    prompt,
+  });
+
+  return new Response(blob, {
+    headers: { "Content-Type": "image/png" },
+  });
+});
+
+// Submit video generation job (async)
+app.post("/api/video/generate", async (c) => {
+  const client = c.get("decart");
+  const { prompt } = await c.req.json<{ prompt: string }>();
+
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt,
+  });
+
+  return c.json({ jobId: job.job_id, status: job.status });
+});
+
+// Check video job status
+app.get("/api/video/status/:jobId", async (c) => {
+  const client = c.get("decart");
+  const jobId = c.req.param("jobId");
+  const status = await client.queue.status(jobId);
+
+  return c.json(status);
+});
+
+// Get video result
+app.get("/api/video/result/:jobId", async (c) => {
+  const client = c.get("decart");
+  const jobId = c.req.param("jobId");
+  const blob = await client.queue.result(jobId);
+
+  return new Response(blob, {
+    headers: { "Content-Type": "video/mp4" },
+  });
+});
+
+export default app;
+```
+
+## Next.js API Route Example
+
+Create API routes in Next.js for server-side generation:
+
+```ts
+// app/api/image/generate/route.ts
+import { createDecartClient, models } from "@decartai/sdk";
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  try {
+    const { prompt } = await request.json();
+
+    const client = createDecartClient({
+      apiKey: process.env.DECART_API_KEY!,
+    });
+
+    const blob = await client.process({
+      model: models.image("lucy-pro-t2i"),
+      prompt,
+    });
+
+    return new NextResponse(blob, {
+      headers: { "Content-Type": "image/png" },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: String(error) },
+      { status: 500 }
+    );
+  }
+}
+```
+
+## Token Generation for Real-Time
+
+Generate client tokens for real-time video streaming:
+
+```ts
+import { createDecartClient } from "@decartai/sdk";
+
+export async function POST() {
+  const client = createDecartClient({
+    apiKey: process.env.DECART_API_KEY!,
+  });
+
+  const token = await client.tokens.create();
+  return Response.json(token);
+}
+```
+
+The client can then use this token:
+
+```ts
+// Client-side
+const response = await fetch("/api/realtime-token", { method: "POST" });
+const { apiKey } = await response.json();
+
+const client = createDecartClient({ apiKey });
+```
+
+## Working with Blobs
+
+The SDK returns `Blob` objects. Here's how to handle them in different contexts:
+
+### Node.js (Buffer)
+
+```ts
+const blob = await client.process({ model, prompt });
+const buffer = Buffer.from(await blob.arrayBuffer());
+res.setHeader("Content-Type", "image/png");
+res.send(buffer);
+```
+
+### Edge Runtime (Response)
+
+```ts
+const blob = await client.process({ model, prompt });
+return new Response(blob, {
+  headers: { "Content-Type": "image/png" },
+});
+```
+
+### Save to File (Node.js)
+
+```ts
+import { writeFile } from "fs/promises";
+
+const blob = await client.process({ model, prompt });
+const buffer = Buffer.from(await blob.arrayBuffer());
+await writeFile("output.png", buffer);
+```
+
+## Environment Variables
+
+Create a `.env` file:
+
+```bash
+DECART_API_KEY=your_api_key_here
+```
+
+Load it in your application:
+
+```ts
+import "dotenv/config";
+// or
+import { config } from "dotenv";
+config();
+```
+
+## Best Practices
+
+1. **Reuse client instances** - Create one client and reuse it across requests
+2. **Use environment variables** - Never hardcode API keys
+3. **Handle errors properly** - Return appropriate HTTP status codes
+4. **Set correct Content-Type** - Use `image/png` or `video/mp4` headers
+5. **Use queue API for videos** - Video generation is async, use `submit()` and `status()`
+6. **Consider timeouts** - Set appropriate timeouts for long-running operations
+
+## Runtime Compatibility
+
+The SDK works in:
+
+- **Node.js** (v18+)
+- **Bun**
+- **Deno**
+- **Cloudflare Workers**
+- **Vercel Edge Functions**
+- **Netlify Edge Functions**
+
+## Next Steps
+
+- [Proxy Setup](/guides/proxy-setup) - Set up a proxy server for production
+- [Error Handling](/guides/error-handling) - Handle errors and retries
+- [Process API Reference](/api/process/generate) - Image generation API docs
+- [Queue API Reference](/api/queue/submit) - Video generation API docs

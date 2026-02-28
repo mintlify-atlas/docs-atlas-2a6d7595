@@ -1,0 +1,500 @@
+---
+title: Events
+description: Real-time client event types and subscriptions
+---
+
+The RealTimeClient emits events for connection state changes, errors, generation progress, diagnostics, and WebRTC statistics. Use `on()` to subscribe and `off()` to unsubscribe.
+
+## Event Methods
+
+```typescript
+// Subscribe to an event
+client.on<K extends keyof Events>(event: K, listener: (data: Events[K]) => void): void
+
+// Unsubscribe from an event
+client.off<K extends keyof Events>(event: K, listener: (data: Events[K]) => void): void
+```
+
+## Event Types
+
+### connectionChange
+
+Emitted when the WebRTC connection state changes.
+
+<ParamField path="state" type="ConnectionState" required>
+  The new connection state. Possible values:
+  - `"connecting"` - Establishing connection
+  - `"connected"` - Connection active, ready for commands
+  - `"generating"` - Model is actively generating output
+  - `"reconnecting"` - Attempting to reconnect after connection loss
+  - `"disconnected"` - Connection closed
+</ParamField>
+
+**Example:**
+
+```typescript
+client.on('connectionChange', (state) => {
+  console.log('Connection state:', state);
+  
+  switch (state) {
+    case 'connecting':
+      showSpinner();
+      break;
+    case 'connected':
+      hideSpinner();
+      enableControls();
+      break;
+    case 'generating':
+      showGeneratingIndicator();
+      break;
+    case 'disconnected':
+      disableControls();
+      showReconnectButton();
+      break;
+  }
+});
+```
+
+### error
+
+Emitted when an error occurs during the WebRTC connection or operation.
+
+<ParamField path="error" type="DecartSDKError" required>
+  An error object with the following properties:
+  
+  <Expandable title="properties">
+    <ParamField path="code" type="string" required>
+      Error code from `ERROR_CODES` constants (e.g., `"WEBRTC_CONNECTION_FAILED"`).
+    </ParamField>
+    
+    <ParamField path="message" type="string" required>
+      Human-readable error message.
+    </ParamField>
+    
+    <ParamField path="details" type="object" optional>
+      Additional error details specific to the error type.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+client.on('error', (error) => {
+  console.error('Error occurred:', error.code, error.message);
+  
+  // Show error to user
+  showErrorNotification(error.message);
+  
+  // Handle specific error types
+  if (error.code === 'WEBRTC_CONNECTION_FAILED') {
+    // Attempt reconnection
+    attemptReconnect();
+  }
+});
+```
+
+### generationTick
+
+Emitted periodically during generation to indicate how long the model has been generating.
+
+<ParamField path="data" type="object" required>
+  <Expandable title="properties">
+    <ParamField path="seconds" type="number" required>
+      Number of seconds the model has been generating continuously.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+client.on('generationTick', ({ seconds }) => {
+  console.log(`Generating for ${seconds} seconds`);
+  
+  // Update UI with generation duration
+  document.getElementById('duration').textContent = `${seconds}s`;
+  
+  // Warn user if generation is taking too long
+  if (seconds > 30) {
+    showWarning('Generation is taking longer than expected');
+  }
+});
+```
+
+### diagnostic
+
+Emitted for diagnostic events related to connection phases, ICE candidates, WebRTC state changes, reconnections, and video stalls.
+
+<ParamField path="event" type="DiagnosticEvent" required>
+  A diagnostic event with a `name` and typed `data` payload.
+  
+  <Expandable title="Event Types">
+    <ParamField path="phaseTiming" type="PhaseTimingEvent">
+      Connection phase timing information.
+      
+      **Data properties:**
+      - `phase`: `"websocket"` | `"avatar-image"` | `"initial-prompt"` | `"webrtc-handshake"` | `"total"`
+      - `durationMs`: Duration in milliseconds
+      - `success`: Whether the phase completed successfully
+      - `error`: Error message if failed (optional)
+    </ParamField>
+    
+    <ParamField path="iceCandidate" type="IceCandidateEvent">
+      ICE candidate information.
+      
+      **Data properties:**
+      - `source`: `"local"` | `"remote"`
+      - `candidateType`: `"host"` | `"srflx"` | `"prflx"` | `"relay"` | `"unknown"`
+      - `protocol`: `"udp"` | `"tcp"` | `"unknown"`
+      - `address`: IP address (optional)
+      - `port`: Port number (optional)
+    </ParamField>
+    
+    <ParamField path="iceStateChange" type="IceStateEvent">
+      ICE connection state change.
+      
+      **Data properties:**
+      - `state`: New ICE state
+      - `previousState`: Previous ICE state
+      - `timestampMs`: Timestamp in milliseconds
+    </ParamField>
+    
+    <ParamField path="peerConnectionStateChange" type="PeerConnectionStateEvent">
+      Peer connection state change.
+      
+      **Data properties:**
+      - `state`: New peer connection state
+      - `previousState`: Previous peer connection state
+      - `timestampMs`: Timestamp in milliseconds
+    </ParamField>
+    
+    <ParamField path="signalingStateChange" type="SignalingStateEvent">
+      Signaling state change.
+      
+      **Data properties:**
+      - `state`: New signaling state
+      - `previousState`: Previous signaling state
+      - `timestampMs`: Timestamp in milliseconds
+    </ParamField>
+    
+    <ParamField path="selectedCandidatePair" type="SelectedCandidatePairEvent">
+      Selected ICE candidate pair.
+      
+      **Data properties:**
+      - `local`: Local candidate info (candidateType, protocol, address, port)
+      - `remote`: Remote candidate info (candidateType, protocol, address, port)
+    </ParamField>
+    
+    <ParamField path="reconnect" type="ReconnectEvent">
+      Reconnection attempt information.
+      
+      **Data properties:**
+      - `attempt`: Current attempt number
+      - `maxAttempts`: Maximum attempts configured
+      - `durationMs`: Duration of reconnection attempt
+      - `success`: Whether reconnection succeeded
+      - `error`: Error message if failed (optional)
+    </ParamField>
+    
+    <ParamField path="videoStall" type="VideoStallEvent">
+      Video stall detection (when FPS drops below 0.5).
+      
+      **Data properties:**
+      - `stalled`: `true` when stall detected, `false` when recovered
+      - `durationMs`: Stall duration (0 when first detected, actual duration on recovery)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+client.on('diagnostic', (event) => {
+  console.log('Diagnostic event:', event.name, event.data);
+  
+  if (event.name === 'phaseTiming') {
+    console.log(`${event.data.phase}: ${event.data.durationMs}ms`);
+  }
+  
+  if (event.name === 'videoStall') {
+    if (event.data.stalled) {
+      console.warn('Video stalled!');
+    } else {
+      console.log(`Video recovered after ${event.data.durationMs}ms`);
+    }
+  }
+  
+  if (event.name === 'reconnect') {
+    console.log(`Reconnect attempt ${event.data.attempt}/${event.data.maxAttempts}`);
+  }
+});
+```
+
+### stats
+
+Emitted periodically (every ~1 second) with WebRTC statistics about video/audio quality, bitrate, packets, and connection metrics.
+
+<ParamField path="stats" type="WebRTCStats" required>
+  WebRTC statistics object.
+  
+  <Expandable title="properties">
+    <ParamField path="timestamp" type="number" required>
+      Timestamp when stats were collected (milliseconds since epoch).
+    </ParamField>
+    
+    <ParamField path="video" type="object | null">
+      Inbound video statistics (received from server). `null` if no video track.
+      
+      **Properties:**
+      - `framesDecoded`: Total frames decoded
+      - `framesDropped`: Total frames dropped
+      - `framesPerSecond`: Current FPS
+      - `frameWidth`: Video width in pixels
+      - `frameHeight`: Video height in pixels
+      - `bytesReceived`: Total bytes received
+      - `packetsReceived`: Total packets received
+      - `packetsLost`: Total packets lost
+      - `jitter`: Network jitter in seconds
+      - `bitrate`: Current bitrate in bits/sec
+      - `freezeCount`: Total freeze events
+      - `totalFreezesDuration`: Total freeze duration in seconds
+      - `packetsLostDelta`: Packets lost since last sample
+      - `framesDroppedDelta`: Frames dropped since last sample
+      - `freezeCountDelta`: Freeze events since last sample
+      - `freezeDurationDelta`: Freeze duration since last sample
+    </ParamField>
+    
+    <ParamField path="audio" type="object | null">
+      Inbound audio statistics (received from server). `null` if no audio track.
+      
+      **Properties:**
+      - `bytesReceived`: Total bytes received
+      - `packetsReceived`: Total packets received
+      - `packetsLost`: Total packets lost
+      - `jitter`: Network jitter in seconds
+      - `bitrate`: Current bitrate in bits/sec
+      - `packetsLostDelta`: Packets lost since last sample
+    </ParamField>
+    
+    <ParamField path="outboundVideo" type="object | null">
+      Outbound video statistics (sent to server). `null` if no outbound video track.
+      
+      **Properties:**
+      - `qualityLimitationReason`: Why quality is limited (`"none"`, `"bandwidth"`, `"cpu"`, `"other"`)
+      - `qualityLimitationDurations`: Time spent in each limitation state (seconds)
+      - `bytesSent`: Total bytes sent
+      - `packetsSent`: Total packets sent
+      - `framesPerSecond`: Current outbound FPS
+      - `frameWidth`: Outbound video width
+      - `frameHeight`: Outbound video height
+      - `bitrate`: Current bitrate in bits/sec
+    </ParamField>
+    
+    <ParamField path="connection" type="object" required>
+      Connection-level statistics.
+      
+      **Properties:**
+      - `currentRoundTripTime`: Round-trip time in seconds (or `null`)
+      - `availableOutgoingBitrate`: Available outgoing bitrate in bits/sec (or `null`)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example:**
+
+```typescript
+client.on('stats', (stats) => {
+  // Log video quality metrics
+  if (stats.video) {
+    console.log(`Video: ${stats.video.framesPerSecond} FPS, ` +
+                `${Math.round(stats.video.bitrate / 1000)} kbps, ` +
+                `${stats.video.frameWidth}x${stats.video.frameHeight}`);
+    
+    // Warn if packets are being lost
+    if (stats.video.packetsLostDelta > 0) {
+      console.warn(`Lost ${stats.video.packetsLostDelta} packets`);
+    }
+    
+    // Warn if frames are being dropped
+    if (stats.video.framesDroppedDelta > 0) {
+      console.warn(`Dropped ${stats.video.framesDroppedDelta} frames`);
+    }
+  }
+  
+  // Log connection quality
+  if (stats.connection.currentRoundTripTime) {
+    const rttMs = Math.round(stats.connection.currentRoundTripTime * 1000);
+    console.log(`RTT: ${rttMs}ms`);
+  }
+});
+```
+
+## Usage Examples
+
+### Basic Event Subscription
+
+```typescript
+const client = await decart.realtime.connect(stream, options);
+
+// Subscribe to connection changes
+client.on('connectionChange', (state) => {
+  console.log('State:', state);
+});
+
+// Subscribe to errors
+client.on('error', (error) => {
+  console.error('Error:', error.message);
+});
+
+// Subscribe to generation progress
+client.on('generationTick', ({ seconds }) => {
+  console.log(`Generating: ${seconds}s`);
+});
+```
+
+### Unsubscribing from Events
+
+```typescript
+const errorHandler = (error: DecartSDKError) => {
+  console.error('Error:', error);
+};
+
+// Subscribe
+client.on('error', errorHandler);
+
+// Later: unsubscribe
+client.off('error', errorHandler);
+```
+
+### Quality Monitoring Dashboard
+
+```typescript
+interface QualityMetrics {
+  fps: number;
+  bitrate: number;
+  packetsLost: number;
+  rtt: number | null;
+}
+
+const metrics: QualityMetrics = {
+  fps: 0,
+  bitrate: 0,
+  packetsLost: 0,
+  rtt: null
+};
+
+client.on('stats', (stats) => {
+  if (stats.video) {
+    metrics.fps = stats.video.framesPerSecond;
+    metrics.bitrate = Math.round(stats.video.bitrate / 1000); // kbps
+    metrics.packetsLost += stats.video.packetsLostDelta;
+  }
+  
+  metrics.rtt = stats.connection.currentRoundTripTime 
+    ? Math.round(stats.connection.currentRoundTripTime * 1000)
+    : null;
+  
+  updateDashboard(metrics);
+});
+
+function updateDashboard(metrics: QualityMetrics) {
+  document.getElementById('fps').textContent = `${metrics.fps} FPS`;
+  document.getElementById('bitrate').textContent = `${metrics.bitrate} kbps`;
+  document.getElementById('packets-lost').textContent = `${metrics.packetsLost}`;
+  document.getElementById('rtt').textContent = metrics.rtt ? `${metrics.rtt}ms` : 'N/A';
+}
+```
+
+### Connection State Manager
+
+```typescript
+class ConnectionStateManager {
+  private state: ConnectionState = 'disconnected';
+  
+  constructor(private client: RealTimeClient) {
+    this.client.on('connectionChange', this.handleStateChange.bind(this));
+    this.client.on('error', this.handleError.bind(this));
+  }
+  
+  private handleStateChange(state: ConnectionState) {
+    console.log(`State transition: ${this.state} -> ${state}`);
+    this.state = state;
+    
+    // Update UI based on state
+    this.updateUI();
+  }
+  
+  private handleError(error: DecartSDKError) {
+    console.error('Connection error:', error);
+    
+    // Show error notification
+    this.showNotification(`Error: ${error.message}`, 'error');
+  }
+  
+  private updateUI() {
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+      statusEl.textContent = this.state;
+      statusEl.className = `status-${this.state}`;
+    }
+  }
+  
+  private showNotification(message: string, type: 'error' | 'info') {
+    // Show notification to user
+    console.log(`[${type}] ${message}`);
+  }
+  
+  getState(): ConnectionState {
+    return this.state;
+  }
+}
+
+const stateManager = new ConnectionStateManager(client);
+```
+
+### Performance Tracker
+
+```typescript
+class PerformanceTracker {
+  private startTime: number = Date.now();
+  private totalFrames: number = 0;
+  private droppedFrames: number = 0;
+  
+  constructor(private client: RealTimeClient) {
+    this.client.on('stats', this.trackStats.bind(this));
+  }
+  
+  private trackStats(stats: WebRTCStats) {
+    if (stats.video) {
+      this.totalFrames += stats.video.framesPerSecond;
+      this.droppedFrames += stats.video.framesDroppedDelta;
+    }
+  }
+  
+  getReport() {
+    const elapsed = (Date.now() - this.startTime) / 1000;
+    const avgFps = this.totalFrames / elapsed;
+    const dropRate = (this.droppedFrames / this.totalFrames) * 100;
+    
+    return {
+      duration: Math.round(elapsed),
+      averageFps: Math.round(avgFps),
+      totalDropped: this.droppedFrames,
+      dropRate: dropRate.toFixed(2) + '%'
+    };
+  }
+}
+
+const tracker = new PerformanceTracker(client);
+
+// Later: get performance report
+const report = tracker.getReport();
+console.log('Performance report:', report);
+```
+
+## See Also
+
+- [connect()](/api/realtime/connect) - Establish connection and get client
+- [disconnect()](/api/realtime/disconnect) - Clean up event listeners
+- [Error Handling](/guides/error-handling) - Handle SDK errors

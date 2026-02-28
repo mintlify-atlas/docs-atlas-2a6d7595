@@ -1,0 +1,282 @@
+---
+title: 'Connection Management'
+description: 'Connect and disconnect from the real-time API'
+---
+
+## Connecting to Real-time API
+
+The `connect()` method establishes a WebRTC connection to the real-time video transformation service.
+
+### Method Signature
+
+```typescript
+connect(
+  stream: MediaStream | null,
+  options: RealTimeClientConnectOptions
+): Promise<RealTimeClient>
+```
+
+### Connection Options
+
+```typescript
+interface RealTimeClientConnectOptions {
+  // Model to use for transformation
+  model: ModelDefinition | CustomModelDefinition;
+  
+  // Callback to receive transformed video stream
+  onRemoteStream: (stream: MediaStream) => void;
+  
+  // Initial state (optional)
+  initialState?: {
+    prompt?: {
+      text: string;
+      enhance?: boolean;
+    };
+    image?: Blob | File | string; // Reference image (for lucy_2_rt)
+  };
+  
+  // Optional: customize WebRTC offer before sending
+  customizeOffer?: (offer: RTCSessionDescriptionInit) => Promise<void>;
+}
+```
+
+## Basic Connection Example
+
+```typescript
+import { createDecartClient } from '@decart-sdk/client';
+
+const client = createDecartClient({
+  apiKey: 'your-api-key'
+});
+
+// Get webcam stream
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: {
+    width: 1280,
+    height: 720,
+    frameRate: 30
+  }
+});
+
+// Connect with initial prompt
+const realtimeClient = await client.realtime.connect(stream, {
+  model: client.models.realtime('mirage_v2'),
+  onRemoteStream: (remoteStream) => {
+    const video = document.getElementById('output-video');
+    video.srcObject = remoteStream;
+  },
+  initialState: {
+    prompt: {
+      text: 'cyberpunk style, neon lights',
+      enhance: true
+    }
+  }
+});
+
+console.log('Connected! Session ID:', realtimeClient.sessionId);
+```
+
+## Getting Media Stream
+
+You need to provide a `MediaStream` for most models. Use the browser's `getUserMedia` API:
+
+### Webcam Input
+
+```typescript
+// High quality webcam
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30 },
+    facingMode: 'user'
+  }
+});
+```
+
+### Screen Capture
+
+```typescript
+// Capture screen
+const stream = await navigator.mediaDevices.getDisplayMedia({
+  video: {
+    width: 1920,
+    height: 1080,
+    frameRate: 30
+  }
+});
+```
+
+### Canvas Stream
+
+```typescript
+// From HTML5 canvas
+const canvas = document.getElementById('myCanvas');
+const stream = canvas.captureStream(30); // 30 fps
+```
+
+## Live Avatar Connection
+
+The `live_avatar` model has special requirements:
+
+```typescript
+// For live_avatar, you can pass null to use internal audio management
+const realtimeClient = await client.realtime.connect(null, {
+  model: client.models.realtime('live_avatar'),
+  onRemoteStream: (remoteStream) => {
+    const video = document.getElementById('avatar-video');
+    video.srcObject = remoteStream;
+  },
+  initialState: {
+    image: avatarImageFile, // Reference image for avatar
+    prompt: {
+      text: 'friendly expression',
+      enhance: true
+    }
+  }
+});
+
+// Play audio to animate avatar
+if (realtimeClient.playAudio) {
+  const audioBlob = await fetch('/audio.mp3').then(r => r.blob());
+  await realtimeClient.playAudio(audioBlob);
+}
+```
+
+## Connection with Reference Image
+
+For models like `lucy_2_rt` that support reference images:
+
+```typescript
+const realtimeClient = await client.realtime.connect(stream, {
+  model: client.models.realtime('lucy_2_rt'),
+  onRemoteStream: (remoteStream) => {
+    video.srcObject = remoteStream;
+  },
+  initialState: {
+    image: referenceImageFile, // Reference style image
+    prompt: {
+      text: 'apply this style',
+      enhance: false
+    }
+  }
+});
+```
+
+## Monitoring Connection State
+
+Track the connection lifecycle:
+
+```typescript
+realtimeClient.on('connectionChange', (state) => {
+  console.log('Connection state:', state);
+  
+  switch (state) {
+    case 'connecting':
+      showLoadingIndicator();
+      break;
+    case 'connected':
+      hideLoadingIndicator();
+      break;
+    case 'generating':
+      showGeneratingIndicator();
+      break;
+    case 'reconnecting':
+      showReconnectingIndicator();
+      break;
+    case 'disconnected':
+      cleanup();
+      break;
+  }
+});
+
+// Check connection status
+if (realtimeClient.isConnected()) {
+  console.log('Currently connected');
+}
+```
+
+## Disconnecting
+
+Always disconnect when done to clean up resources:
+
+```typescript
+// Clean disconnect
+realtimeClient.disconnect();
+
+// Stop local media tracks
+stream.getTracks().forEach(track => track.stop());
+```
+
+## Error Handling
+
+Handle connection errors gracefully:
+
+```typescript
+try {
+  const realtimeClient = await client.realtime.connect(stream, {
+    model: client.models.realtime('mirage_v2'),
+    onRemoteStream: (remoteStream) => {
+      video.srcObject = remoteStream;
+    }
+  });
+  
+  realtimeClient.on('error', (error) => {
+    console.error('Real-time error:', error.code, error.message);
+    
+    if (error.code === 'WEBRTC_CONNECTION_FAILED') {
+      // Handle connection failure
+      showErrorMessage('Failed to connect. Please try again.');
+    }
+  });
+} catch (error) {
+  console.error('Connection failed:', error);
+  // Handle initial connection error
+}
+```
+
+## Custom WebRTC Offer
+
+For advanced use cases, customize the WebRTC offer:
+
+```typescript
+const realtimeClient = await client.realtime.connect(stream, {
+  model: client.models.realtime('mirage_v2'),
+  onRemoteStream: (remoteStream) => {
+    video.srcObject = remoteStream;
+  },
+  customizeOffer: async (offer) => {
+    // Modify SDP before sending
+    if (offer.sdp) {
+      offer.sdp = offer.sdp.replace(
+        'useinbandfec=1',
+        'useinbandfec=1;stereo=1'
+      );
+    }
+  }
+});
+```
+
+## Session Information
+
+Access session details for debugging or subscribe functionality:
+
+```typescript
+console.log('Session ID:', realtimeClient.sessionId);
+console.log('Subscribe token:', realtimeClient.subscribeToken);
+
+// Use subscribe token to allow others to view the stream
+if (realtimeClient.subscribeToken) {
+  const subscribeClient = await client.realtime.subscribe({
+    token: realtimeClient.subscribeToken,
+    onRemoteStream: (stream) => {
+      viewerVideo.srcObject = stream;
+    }
+  });
+}
+```
+
+## Next Steps
+
+- [State Management](/realtime/state-management) - Update prompts and parameters during connection
+- [Events & Diagnostics](/realtime/events) - Monitor connection health and performance

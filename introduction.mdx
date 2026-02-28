@@ -1,0 +1,121 @@
+---
+title: Introduction
+description: JavaScript SDK for Decart's AI-powered real-time video transformation and generation models
+---
+
+# Decart AI SDK
+
+The Decart AI SDK is a JavaScript/TypeScript SDK that provides seamless access to Decart's powerful AI models for real-time video transformation, video generation, and image generation.
+
+## Key Features
+
+- **Real-time Video Transformation**: Transform video streams in real-time using WebRTC for ultra-low latency
+- **Async Video Generation**: Generate high-quality videos from text, images, or other videos using queue-based processing
+- **Synchronous Image Generation**: Create images instantly with text-to-image and image-to-image models
+- **TypeScript Support**: Fully typed API with comprehensive type definitions
+- **Multiple Input Types**: Support for File, Blob, ReadableStream, URL, and string inputs
+- **Flexible Authentication**: Direct API access or proxy mode for client-side security
+
+## Three Powerful APIs
+
+The SDK provides three distinct APIs for different use cases:
+
+<CardGroup cols={3}>
+  <Card title="Real-time API" icon="video" href="#real-time-webrtc">
+    WebRTC-based real-time video transformation with sub-second latency
+  </Card>
+  <Card title="Queue API" icon="clock" href="#queue-async-video">
+    Async video generation for longer, high-quality outputs
+  </Card>
+  <Card title="Process API" icon="image" href="#process-sync-image">
+    Synchronous image generation for instant results
+  </Card>
+</CardGroup>
+
+### Real-time (WebRTC)
+
+Perfect for live video transformation and interactive experiences. Uses WebRTC for ultra-low latency streaming.
+
+**Available Models:**
+- `mirage` - Real-time video restyling
+- `mirage_v2` - Real-time video restyling (v2)
+- `lucy_v2v_720p_rt` - Real-time video editing
+- `lucy_2_rt` - Real-time video editing with reference image support
+- `live_avatar` - Real-time avatar generation
+
+**Typical latency:** < 1 second
+
+### Queue (Async Video)
+
+Ideal for generating high-quality videos asynchronously. Submit jobs and poll for results.
+
+**Available Models:**
+- `lucy-pro-t2v` - Text-to-video (Pro quality)
+- `lucy-pro-i2v` - Image-to-video (Pro quality)
+- `lucy-pro-v2v` - Video-to-video (Pro quality)
+- `lucy-pro-flf2v` - First-last-frame-to-video (Pro quality)
+- `lucy-fast-v2v` - Video-to-video (Fast quality)
+- `lucy-dev-i2v` - Image-to-video (Dev quality)
+- `lucy-motion` - Motion-based image-to-video with trajectory guidance
+- `lucy-restyle-v2v` - Video restyling
+
+**Typical duration:** 30 seconds to several minutes
+
+### Process (Sync Image)
+
+Best for instant image generation with immediate results.
+
+**Available Models:**
+- `lucy-pro-t2i` - Text-to-image (Pro quality)
+- `lucy-pro-i2i` - Image-to-image (Pro quality)
+
+**Typical duration:** 1-5 seconds
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with real-time video transformation and video generation in minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the SDK with npm, pnpm, or yarn
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore the complete API documentation
+  </Card>
+  <Card title="Examples" icon="lightbulb" href="/examples">
+    Browse example code and use cases
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+- **Live Video Effects**: Apply AI-powered effects to webcam streams in real-time
+- **Content Creation**: Generate videos and images from text descriptions
+- **Video Editing**: Transform existing videos with AI-powered styling
+- **Interactive Experiences**: Build interactive applications with real-time AI processing
+- **Avatar Generation**: Create live avatars with audio-driven animation
+
+## Authentication
+
+The SDK supports two authentication modes:
+
+<Note>
+**Direct API Access**: Use your API key directly (recommended for server-side applications)
+
+```typescript
+const client = createDecartClient({ apiKey: "your-api-key" });
+```
+</Note>
+
+<Note>
+**Proxy Mode**: Route requests through your own server (recommended for client-side applications)
+
+```typescript
+const client = createDecartClient({ proxy: "https://your-server.com/api/decart" });
+```
+</Note>
+
+## Getting Started
+
+Ready to start building? Check out our [Quick Start Guide](/quickstart) or [Installation Instructions](/installation).

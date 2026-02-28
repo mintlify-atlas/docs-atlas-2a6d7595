@@ -1,0 +1,303 @@
+---
+title: disconnect()
+description: Close the real-time connection and clean up resources
+---
+
+Closes the WebRTC connection, stops telemetry reporting, and cleans up all resources associated with the real-time client.
+
+## Method Signature
+
+```typescript
+disconnect(): void
+```
+
+## Parameters
+
+None.
+
+## Return Value
+
+<ResponseField name="void" type="void">
+  This method returns immediately and performs cleanup synchronously.
+</ResponseField>
+
+## What Gets Cleaned Up
+
+When you call `disconnect()`, the following cleanup occurs:
+
+1. **WebRTC Statistics Collection** - Stops collecting and reporting WebRTC stats
+2. **Telemetry Reporter** - Stops sending telemetry data to the server
+3. **Event Buffer** - Stops buffering and emitting events
+4. **WebRTC Manager** - Closes the WebRTC peer connection and WebSocket
+5. **Audio Stream Manager** - Cleans up audio resources (for `live_avatar` model)
+
+After calling `disconnect()`, the client instance should not be used anymore. Create a new connection if you need to reconnect.
+
+## Usage Examples
+
+### Basic Disconnection
+
+```typescript
+import { createDecartClient, models } from '@decart/sdk';
+
+const decart = createDecartClient({ apiKey: 'your-api-key' });
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+const client = await decart.realtime.connect(stream, {
+  model: models.realtime.mirage(),
+  onRemoteStream: (remoteStream) => {
+    videoElement.srcObject = remoteStream;
+  }
+});
+
+// ... use the client ...
+
+// Disconnect when done
+client.disconnect();
+console.log('Disconnected');
+```
+
+### Cleanup on Page Unload
+
+```typescript
+let client: RealTimeClient | null = null;
+
+// Connect
+client = await decart.realtime.connect(stream, options);
+
+// Clean up when user leaves the page
+window.addEventListener('beforeunload', () => {
+  if (client) {
+    client.disconnect();
+  }
+});
+```
+
+### Cleanup with Try-Finally
+
+```typescript
+let client: RealTimeClient | null = null;
+
+try {
+  client = await decart.realtime.connect(stream, options);
+  
+  // Use the client
+  await client.setPrompt('anime style');
+  
+  // Wait for some time
+  await new Promise(resolve => setTimeout(resolve, 30000));
+} finally {
+  // Always clean up, even if errors occur
+  if (client) {
+    client.disconnect();
+  }
+}
+```
+
+### Manual Reconnection
+
+```typescript
+let client: RealTimeClient | null = null;
+
+async function reconnect() {
+  // Disconnect existing client if any
+  if (client) {
+    client.disconnect();
+    client = null;
+  }
+  
+  // Create new connection
+  try {
+    client = await decart.realtime.connect(stream, options);
+    console.log('Reconnected successfully');
+  } catch (error) {
+    console.error('Reconnection failed:', error);
+  }
+}
+
+// Trigger reconnection
+await reconnect();
+```
+
+### Connection Manager Class
+
+```typescript
+class RealtimeConnection {
+  private client: RealTimeClient | null = null;
+  private decart: ReturnType<typeof createDecartClient>;
+  
+  constructor(apiKey: string) {
+    this.decart = createDecartClient({ apiKey });
+  }
+  
+  async connect(
+    stream: MediaStream,
+    options: Omit<RealTimeClientConnectOptions, 'onRemoteStream'>,
+    onRemoteStream: (stream: MediaStream) => void
+  ) {
+    // Disconnect existing connection
+    this.disconnect();
+    
+    this.client = await this.decart.realtime.connect(stream, {
+      ...options,
+      onRemoteStream
+    });
+    
+    return this.client;
+  }
+  
+  disconnect() {
+    if (this.client) {
+      this.client.disconnect();
+      this.client = null;
+    }
+  }
+  
+  isConnected(): boolean {
+    return this.client?.isConnected() ?? false;
+  }
+}
+
+const connection = new RealtimeConnection('your-api-key');
+
+// Connect
+await connection.connect(stream, { model: models.realtime.mirage() }, 
+  (remoteStream) => {
+    videoElement.srcObject = remoteStream;
+  }
+);
+
+// Disconnect
+connection.disconnect();
+```
+
+### React Hook Example
+
+```typescript
+import { useEffect, useRef } from 'react';
+import { createDecartClient, models, type RealTimeClient } from '@decart/sdk';
+
+function useRealtimeConnection(
+  apiKey: string,
+  stream: MediaStream | null,
+  onRemoteStream: (stream: MediaStream) => void
+) {
+  const clientRef = useRef<RealTimeClient | null>(null);
+  
+  useEffect(() => {
+    if (!stream) return;
+    
+    const decart = createDecartClient({ apiKey });
+    
+    // Connect
+    decart.realtime.connect(stream, {
+      model: models.realtime.mirage(),
+      onRemoteStream
+    })
+    .then(client => {
+      clientRef.current = client;
+    })
+    .catch(error => {
+      console.error('Connection failed:', error);
+    });
+    
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (clientRef.current) {
+        clientRef.current.disconnect();
+        clientRef.current = null;
+      }
+    };
+  }, [apiKey, stream]);
+  
+  return clientRef.current;
+}
+
+// Usage in component
+function RealtimeVideo() {
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  const client = useRealtimeConnection(
+    'your-api-key',
+    stream,
+    (remoteStream) => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = remoteStream;
+      }
+    }
+  );
+  
+  return <video ref={videoRef} autoPlay />;
+}
+```
+
+### Disconnect with Event Cleanup
+
+```typescript
+const client = await decart.realtime.connect(stream, options);
+
+// Add event listeners
+const errorHandler = (error: DecartSDKError) => {
+  console.error('Error:', error);
+};
+
+const stateHandler = (state: ConnectionState) => {
+  console.log('State:', state);
+};
+
+client.on('error', errorHandler);
+client.on('connectionChange', stateHandler);
+
+// Later: remove listeners before disconnect (optional, as disconnect cleans up)
+client.off('error', errorHandler);
+client.off('connectionChange', stateHandler);
+
+client.disconnect();
+```
+
+## Important Notes
+
+### Connection State After Disconnect
+
+After calling `disconnect()`, the connection state becomes `"disconnected"`. You can verify this:
+
+```typescript
+console.log(client.getConnectionState()); // "connected" or "generating"
+client.disconnect();
+console.log(client.getConnectionState()); // "disconnected"
+```
+
+### Cannot Reuse Client
+
+Once disconnected, you cannot reconnect the same client instance. You must create a new connection:
+
+```typescript
+// ❌ Wrong: Cannot reconnect after disconnect
+client.disconnect();
+await client.setPrompt('new prompt'); // Error: connection is disconnected
+
+// ✓ Correct: Create new connection
+client.disconnect();
+const newClient = await decart.realtime.connect(stream, options);
+await newClient.setPrompt('new prompt');
+```
+
+### Synchronous Operation
+
+Unlike `connect()` which is asynchronous, `disconnect()` is synchronous and returns immediately. You don't need to await it:
+
+```typescript
+// No await needed
+client.disconnect();
+```
+
+### No Error Throwing
+
+The method doesn't throw errors. It safely handles cleanup even if the connection is already closed or in an error state.
+
+## See Also
+
+- [connect()](/api/realtime/connect) - Establish a new connection
+- [Events](/api/realtime/events) - Monitor connection state
+- [getConnectionState()](/api/realtime/connect#return-value) - Check current state

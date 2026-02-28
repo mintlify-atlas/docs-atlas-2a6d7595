@@ -1,0 +1,254 @@
+---
+title: set()
+description: Update prompt and/or reference image simultaneously
+---
+
+Updates the prompt and/or reference image for the real-time model. This method allows you to change both the text prompt and reference image in a single operation.
+
+## Method Signature
+
+```typescript
+set(input: SetInput): Promise<void>
+```
+
+## Parameters
+
+<ParamField path="input" type="SetInput" required>
+  Object containing the prompt and/or image to update. At least one of `prompt` or `image` must be provided.
+  
+  <Expandable title="properties">
+    <ParamField path="prompt" type="string" optional>
+      The new prompt text. Must be a non-empty string if provided.
+    </ParamField>
+    
+    <ParamField path="enhance" type="boolean" optional default="true">
+      Whether to enhance the prompt using AI. Only applicable when `prompt` is provided.
+    </ParamField>
+    
+    <ParamField path="image" type="Blob | File | string | null" optional>
+      The reference image to update. Can be:
+      - `Blob` or `File` object
+      - Data URL string (e.g., `"data:image/png;base64,..."`)
+      - HTTP(S) URL string (will be fetched automatically)
+      - Base64-encoded string
+      - `null` to clear the current image
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="Promise<void>" type="Promise<void>">
+  A promise that resolves when the update is complete, or rejects if:
+  - The connection is not active
+  - Input validation fails
+  - The server rejects the update
+  - The operation times out (30 seconds)
+</ResponseField>
+
+## Error Handling
+
+The method throws an error if:
+- Connection is not in `"connected"` or `"generating"` state
+- Neither `prompt` nor `image` is provided
+- `prompt` is an empty string
+- Image format is invalid or cannot be fetched
+- Server rejects the update
+- Operation times out after 30 seconds
+
+```typescript
+try {
+  await client.set({
+    prompt: 'cyberpunk style',
+    image: imageBlob
+  });
+  console.log('State updated successfully');
+} catch (error) {
+  console.error('Failed to update state:', error.message);
+}
+```
+
+## Usage Examples
+
+### Update Both Prompt and Image
+
+```typescript
+import { createDecartClient, models } from '@decart/sdk';
+
+const decart = createDecartClient({ apiKey: 'your-api-key' });
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+const client = await decart.realtime.connect(stream, {
+  model: models.realtime.lucy2Rt(),
+  onRemoteStream: (remoteStream) => {
+    videoElement.srcObject = remoteStream;
+  }
+});
+
+// Update both prompt and reference image
+const referenceImage = await fetch('/reference.jpg').then(r => r.blob());
+
+await client.set({
+  prompt: 'Match the style of the reference image',
+  image: referenceImage,
+  enhance: true
+});
+```
+
+### Update Only Prompt
+
+```typescript
+// Update just the prompt
+await client.set({
+  prompt: 'anime style, vibrant colors'
+});
+```
+
+### Update Only Image
+
+```typescript
+// Update just the reference image
+const newImage = await fetch('https://example.com/new-ref.jpg')
+  .then(r => r.blob());
+
+await client.set({
+  image: newImage
+});
+```
+
+### Clear Reference Image
+
+```typescript
+// Remove the current reference image
+await client.set({
+  image: null,
+  prompt: 'Continue without reference image'
+});
+```
+
+### Image from File Input
+
+```typescript
+// Handle file upload from user
+const fileInput = document.getElementById('image-upload');
+
+fileInput.addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  try {
+    await client.set({
+      image: file,
+      prompt: 'Apply style from reference'
+    });
+    console.log('Reference image updated');
+  } catch (error) {
+    console.error('Failed to update:', error.message);
+  }
+});
+```
+
+### Image from URL
+
+```typescript
+// Set image from HTTP URL (automatically fetched)
+await client.set({
+  image: 'https://example.com/reference.jpg',
+  prompt: 'Match this style'
+});
+```
+
+### Image from Data URL
+
+```typescript
+// Set image from canvas or data URL
+const canvas = document.getElementById('canvas');
+const dataUrl = canvas.toDataURL('image/png');
+
+await client.set({
+  image: dataUrl,
+  prompt: 'Transform based on this reference'
+});
+```
+
+### Sequential Updates
+
+```typescript
+// Update state multiple times
+const styles = [
+  { prompt: 'watercolor painting', image: 'ref1.jpg' },
+  { prompt: 'oil painting', image: 'ref2.jpg' },
+  { prompt: 'digital art', image: 'ref3.jpg' }
+];
+
+for (const style of styles) {
+  await client.set(style);
+  await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s between updates
+}
+```
+
+### Dynamic State Management
+
+```typescript
+class RealtimeStateManager {
+  constructor(private client: RealTimeClient) {}
+  
+  async updatePrompt(prompt: string) {
+    await this.client.set({ prompt });
+  }
+  
+  async updateImage(image: Blob | File | string) {
+    await this.client.set({ image });
+  }
+  
+  async updateBoth(prompt: string, image: Blob | File | string) {
+    await this.client.set({ prompt, image });
+  }
+  
+  async clearImage() {
+    await this.client.set({ 
+      image: null,
+      prompt: 'Reset to default style'
+    });
+  }
+}
+
+const manager = new RealtimeStateManager(client);
+await manager.updateBoth('anime style', referenceImage);
+```
+
+## Implementation Details
+
+### Timeout
+
+The method has a built-in timeout of **30 seconds** for the update operation. This is longer than `setPrompt()` because image uploads may take additional time.
+
+### Image Processing
+
+When an image is provided:
+1. If it's a URL (HTTP/HTTPS), it's fetched automatically
+2. If it's a data URL, the base64 part is extracted
+3. If it's a Blob/File, it's converted to base64
+4. The base64 image is sent to the server via WebSocket
+
+### Validation
+
+The method validates:
+- At least one of `prompt` or `image` must be provided
+- If `prompt` is provided, it must be a non-empty string
+- If `image` is provided, it must be a valid format
+- Connection must be active (`"connected"` or `"generating"` state)
+
+## Comparison with Other Methods
+
+| Method | Updates Prompt | Updates Image | Use Case |
+|--------|---------------|---------------|----------|
+| `set()` | ✓ | ✓ | Update prompt and/or image together |
+| `setPrompt()` | ✓ | ✗ | Update only prompt with faster acknowledgment |
+| `setImage()` | ✗ | ✓ | Update only image with additional options |
+
+## See Also
+
+- [setPrompt()](/api/realtime/set-prompt) - Update only the prompt
+- [connect()](/api/realtime/connect) - Initial connection with state
+- [Events](/api/realtime/events) - Monitor state changes

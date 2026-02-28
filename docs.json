@@ -1,122 +1,174 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Decart AI SDK",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#8B5CF6",
+    "light": "#A78BFA",
+    "dark": "#6D28D9"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/DecartAI/sdk"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/DecartAI/sdk"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/client",
+              "concepts/models",
+              "concepts/authentication"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Real-time API",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "realtime/overview",
+              "realtime/connection",
+              "realtime/state-management",
+              "realtime/events"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Queue API",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "queue/overview",
+              "queue/submit",
+              "queue/polling",
+              "queue/status"
+            ]
+          },
+          {
+            "group": "Process API",
+            "pages": [
+              "process/overview",
+              "process/synchronous-generation"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/react-integration",
+              "guides/nextjs-integration",
+              "guides/server-side",
+              "guides/proxy-setup",
+              "guides/error-handling"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Client",
             "pages": [
-              "api-reference/introduction"
+              "api/create-client",
+              "api/client-options"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Real-time Client",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/realtime/connect",
+              "api/realtime/set-prompt",
+              "api/realtime/set-state",
+              "api/realtime/disconnect",
+              "api/realtime/events"
+            ]
+          },
+          {
+            "group": "Queue Client",
+            "pages": [
+              "api/queue/submit",
+              "api/queue/submit-and-poll",
+              "api/queue/status",
+              "api/queue/result"
+            ]
+          },
+          {
+            "group": "Process Client",
+            "pages": [
+              "api/process/generate"
+            ]
+          },
+          {
+            "group": "Tokens Client",
+            "pages": [
+              "api/tokens/create"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/realtime-models",
+              "api/models/video-models",
+              "api/models/image-models"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types/model-state",
+              "api/types/connection-state",
+              "api/types/job-status",
+              "api/types/errors"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Real-time Examples",
+            "pages": [
+              "examples/react-vite",
+              "examples/nextjs-realtime"
+            ]
+          },
+          {
+            "group": "Queue Examples",
+            "pages": [
+              "examples/video-generation",
+              "examples/image-to-video"
+            ]
+          },
+          {
+            "group": "Server Examples",
+            "pages": [
+              "examples/express-api",
+              "examples/hono-edge"
+            ]
+          },
+          {
+            "group": "Proxy Examples",
+            "pages": [
+              "examples/express-proxy",
+              "examples/nextjs-proxy"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

@@ -1,0 +1,335 @@
+---
+title: 'Models'
+description: 'Understanding the Decart AI model system and available models'
+---
+
+## Overview
+
+The Decart SDK provides a type-safe model registry that organizes models into three categories:
+
+- **Realtime models** - WebRTC-based streaming for interactive experiences
+- **Video models** - Queue-based async processing for video generation
+- **Image models** - Synchronous processing for image generation
+
+Each model comes with a complete definition including resolution, frame rate, and input validation schema.
+
+## Model Registry Functions
+
+The SDK exports a `models` object with three factory functions:
+
+```typescript
+import { models } from '@decart-ai/sdk';
+
+// Get a realtime model definition
+const realtimeModel = models.realtime('mirage');
+
+// Get a video model definition
+const videoModel = models.video('lucy-pro-t2v');
+
+// Get an image model definition
+const imageModel = models.image('lucy-pro-t2i');
+```
+
+### TypeScript Signatures
+
+```typescript
+type models = {
+  realtime: <T extends RealTimeModels>(model: T) => ModelDefinition<T>;
+  video: <T extends VideoModels>(model: T) => ModelDefinition<T>;
+  image: <T extends ImageModels>(model: T) => ModelDefinition<T>;
+};
+```
+
+## Model Definitions
+
+Each model definition contains:
+
+```typescript
+type ModelDefinition = {
+  name: string;           // Model identifier
+  urlPath: string;        // API endpoint path
+  queueUrlPath?: string;  // Queue API endpoint (for video/image models)
+  fps: number;            // Frames per second
+  width: number;          // Video/image width in pixels
+  height: number;         // Video/image height in pixels
+  inputSchema: ZodSchema; // Zod validation schema for inputs
+};
+```
+
+### Example Model Definition
+
+```typescript
+const model = models.video('lucy-pro-t2v');
+
+console.log(model);
+// {
+//   name: 'lucy-pro-t2v',
+//   urlPath: '/v1/generate/lucy-pro-t2v',
+//   queueUrlPath: '/v1/jobs/lucy-pro-t2v',
+//   fps: 25,
+//   width: 1280,
+//   height: 704,
+//   inputSchema: ZodObject { ... }
+// }
+```
+
+## Realtime Models
+
+Realtime models use WebRTC for low-latency interactive video streaming.
+
+<ParamField path="mirage" type="RealTimeModel">
+  Real-time video restyling model
+  - **FPS:** 25
+  - **Resolution:** 1280x704
+</ParamField>
+
+<ParamField path="mirage_v2" type="RealTimeModel">
+  Real-time video restyling model (v2)
+  - **FPS:** 22
+  - **Resolution:** 1280x704
+</ParamField>
+
+<ParamField path="lucy_v2v_720p_rt" type="RealTimeModel">
+  Real-time video editing model
+  - **FPS:** 25
+  - **Resolution:** 1280x704
+</ParamField>
+
+<ParamField path="lucy_2_rt" type="RealTimeModel">
+  Real-time video editing model with reference image support
+  - **FPS:** 20
+  - **Resolution:** 1280x720
+</ParamField>
+
+<ParamField path="live_avatar" type="RealTimeModel">
+  Real-time avatar generation model
+  - **FPS:** 25
+  - **Resolution:** 1280x720
+</ParamField>
+
+### Usage with Realtime Client
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({ apiKey: 'your-api-key' });
+
+const stream = await client.realtime.connect({
+  model: models.realtime('mirage'),
+  onRemoteStream: (stream) => {
+    videoElement.srcObject = stream;
+  }
+});
+```
+
+## Video Models
+
+Video models use the queue API for asynchronous video generation.
+
+<ParamField path="lucy-pro-t2v" type="VideoModel">
+  **Text-to-video** (Pro quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x704
+  - **Inputs:** `prompt`, `seed?`, `resolution?`, `orientation?`
+</ParamField>
+
+<ParamField path="lucy-pro-i2v" type="VideoModel">
+  **Image-to-video** (Pro quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x704
+  - **Inputs:** `prompt`, `data` (image), `seed?`, `resolution?`
+  - **Output:** 5 seconds max
+</ParamField>
+
+<ParamField path="lucy-dev-i2v" type="VideoModel">
+  **Image-to-video** (Dev quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x704 (720p only)
+  - **Inputs:** `prompt`, `data` (image), `seed?`, `resolution?`
+  - **Output:** 5 seconds max
+</ParamField>
+
+<ParamField path="lucy-pro-v2v" type="VideoModel">
+  **Video-to-video** (Pro quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x704 (720p only)
+  - **Inputs:** `prompt`, `data` (video), `reference_image?`, `seed?`, `resolution?`, `enhance_prompt?`
+  - **Output:** 5 seconds max
+</ParamField>
+
+<ParamField path="lucy-fast-v2v" type="VideoModel">
+  **Video-to-video** (Fast quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x720 (720p only)
+  - **Inputs:** `prompt`, `data` (video), `seed?`, `resolution?`, `enhance_prompt?`
+  - **Output:** 5 seconds max
+</ParamField>
+
+<ParamField path="lucy-restyle-v2v" type="VideoModel">
+  **Video restyling** (video-to-video)
+  - **FPS:** 22
+  - **Resolution:** 1280x704 (720p only)
+  - **Inputs:** Either `prompt` OR `reference_image` (not both), `data` (video), `seed?`, `resolution?`, `enhance_prompt?`
+</ParamField>
+
+<ParamField path="lucy-pro-flf2v" type="VideoModel">
+  **First-last-frame-to-video** (Pro quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x704
+  - **Inputs:** `prompt`, `start` (image), `end` (image), `seed?`, `resolution?`
+</ParamField>
+
+<ParamField path="lucy-motion" type="VideoModel">
+  **Motion-based image-to-video** with trajectory guidance
+  - **FPS:** 25
+  - **Resolution:** 1280x704 (720p only)
+  - **Inputs:** `data` (image), `trajectory` (array of frame/x/y points), `seed?`, `resolution?`
+  - **Output:** 5 seconds max
+</ParamField>
+
+### Usage with Queue Client
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({ apiKey: 'your-api-key' });
+
+const result = await client.queue.submitAndPoll({
+  model: models.video('lucy-pro-t2v'),
+  prompt: 'A beautiful sunset over the ocean',
+  seed: 42,
+  resolution: '720p'
+});
+
+if (result.status === 'completed') {
+  const videoUrl = URL.createObjectURL(result.data);
+}
+```
+
+## Image Models
+
+Image models use the process API for synchronous image generation.
+
+<ParamField path="lucy-pro-t2i" type="ImageModel">
+  **Text-to-image** (Pro quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x704
+  - **Inputs:** `prompt`, `seed?`, `resolution?`, `orientation?`
+  - **Resolutions:** `720p` (default), `480p`
+</ParamField>
+
+<ParamField path="lucy-pro-i2i" type="ImageModel">
+  **Image-to-image** (Pro quality)
+  - **FPS:** 25
+  - **Resolution:** 1280x704
+  - **Inputs:** `prompt`, `data` (image), `seed?`, `resolution?`, `enhance_prompt?`
+  - **Resolutions:** `720p` (default), `480p`
+</ParamField>
+
+### Usage with Process Client
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({ apiKey: 'your-api-key' });
+
+const blob = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'A beautiful sunset over the ocean',
+  seed: 42,
+  resolution: '720p'
+});
+
+const imageUrl = URL.createObjectURL(blob);
+```
+
+## Type Guards
+
+The SDK provides type guard functions to check model types:
+
+```typescript
+import { isRealtimeModel, isVideoModel, isImageModel } from '@decart-ai/sdk';
+
+const modelName = 'lucy-pro-t2v';
+
+if (isRealtimeModel(modelName)) {
+  // modelName is typed as RealTimeModels
+}
+
+if (isVideoModel(modelName)) {
+  // modelName is typed as VideoModels
+}
+
+if (isImageModel(modelName)) {
+  // modelName is typed as ImageModels
+}
+```
+
+## File Input Types
+
+Models that accept image or video inputs support multiple file formats:
+
+```typescript
+type FileInput =
+  | File              // Browser File object
+  | Blob              // Blob object
+  | ReadableStream    // ReadableStream
+  | URL               // URL object
+  | string            // URL as string
+  | ReactNativeFile;  // React Native file object
+
+// React Native file format
+type ReactNativeFile = {
+  uri: string;
+  type: string;
+  name: string;
+};
+```
+
+### Example with Different Input Types
+
+```typescript
+// Using a URL string
+await client.queue.submit({
+  model: models.video('lucy-pro-i2v'),
+  prompt: 'Animate this image',
+  data: 'https://example.com/image.jpg'
+});
+
+// Using a File object
+const file = new File([blob], 'image.jpg', { type: 'image/jpeg' });
+await client.queue.submit({
+  model: models.video('lucy-pro-i2v'),
+  prompt: 'Animate this image',
+  data: file
+});
+
+// Using a Blob
+await client.queue.submit({
+  model: models.video('lucy-pro-i2v'),
+  prompt: 'Animate this image',
+  data: blob
+});
+```
+
+## Custom Model Definitions
+
+You can provide custom model configurations:
+
+```typescript
+import type { CustomModelDefinition } from '@decart-ai/sdk';
+
+const customModel: CustomModelDefinition = {
+  name: 'my-custom-model',
+  urlPath: '/v1/custom/model',
+  fps: 30,
+  width: 1920,
+  height: 1080
+};
+
+// Use with any client
+await client.realtime.connect({
+  model: customModel,
+  onRemoteStream: (stream) => { /* ... */ }
+});
+```

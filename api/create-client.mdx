@@ -1,0 +1,206 @@
+---
+title: createDecartClient()
+description: Factory function to create a Decart API client
+---
+
+## Overview
+
+The `createDecartClient()` function creates a Decart API client with access to all API endpoints including realtime (WebRTC), process (image generation), queue (video generation), and tokens.
+
+## Function Signature
+
+```typescript
+function createDecartClient(options?: DecartClientOptions): {
+  realtime: RealTimeClient;
+  process: ProcessClient;
+  queue: QueueClient;
+  tokens: TokensClient;
+}
+```
+
+## Parameters
+
+<ParamField path="options" type="DecartClientOptions" default="{}">
+  Configuration options for the client. See [DecartClientOptions](/api/client-options) for details.
+
+  <Expandable title="properties">
+    <ParamField path="apiKey" type="string" optional>
+      API key for authentication. Cannot be used with `proxy`. If not provided, falls back to `DECART_API_KEY` environment variable.
+    </ParamField>
+
+    <ParamField path="proxy" type="string" optional>
+      URL or path of the proxy server. When set, the client uses proxy mode instead of direct API access. Can be a full URL (e.g., `https://your-server.com/api/decart`) or a relative path (e.g., `/api/decart`). Cannot be used with `apiKey`.
+    </ParamField>
+
+    <ParamField path="baseUrl" type="string" default="https://api.decart.ai" optional>
+      Override the default API base URL for HTTP endpoints (process, queue, tokens).
+    </ParamField>
+
+    <ParamField path="realtimeBaseUrl" type="string" default="wss://api3.decart.ai" optional>
+      Override the default WebSocket base URL for realtime connections.
+    </ParamField>
+
+    <ParamField path="integration" type="string" optional>
+      Optional integration identifier for tracking and analytics.
+    </ParamField>
+
+    <ParamField path="logger" type="Logger" optional>
+      Custom logger instance. Use `createConsoleLogger()` or implement the `Logger` interface. Defaults to `noopLogger`.
+    </ParamField>
+
+    <ParamField path="telemetry" type="boolean" default="true" optional>
+      Enable or disable telemetry reporting. Set to `false` to opt out.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="realtime" type="RealTimeClient">
+  Client for real-time video streaming using WebRTC. Supports realtime models like `mirage`, `mirage_v2`, `lucy_v2v_720p_rt`, and `lucy_2_rt`.
+</ResponseField>
+
+<ResponseField name="process" type="ProcessClient">
+  Client for synchronous image generation. Only image models support the process API (e.g., `lucy-pro-t2i`, `lucy-pro-i2i`).
+</ResponseField>
+
+<ResponseField name="queue" type="QueueClient">
+  Client for queue-based async video generation. Only video models support the queue API (e.g., `lucy-pro-t2v`, `lucy-pro-i2v`, `lucy-pro-v2v`).
+</ResponseField>
+
+<ResponseField name="tokens" type="TokensClient">
+  Client for creating client tokens. Client tokens are short-lived API keys safe for client-side use.
+</ResponseField>
+
+## Examples
+
+### Direct API Access with Explicit API Key
+
+```typescript
+import { createDecartClient } from "@decart-ai/sdk";
+
+const client = createDecartClient({ 
+  apiKey: "your-api-key" 
+});
+```
+
+### Using Environment Variable
+
+```typescript
+// Assumes DECART_API_KEY is set in environment
+const client = createDecartClient();
+```
+
+### Proxy Mode (Client-Side)
+
+```typescript
+// For client-side use without exposing API keys
+const client = createDecartClient({ 
+  proxy: "https://your-server.com/api/decart" 
+});
+
+// Or with a relative path
+const client = createDecartClient({ 
+  proxy: "/api/decart" 
+});
+```
+
+### With Custom Logger
+
+```typescript
+import { createDecartClient, createConsoleLogger } from "@decart-ai/sdk";
+
+const client = createDecartClient({
+  apiKey: "your-api-key",
+  logger: createConsoleLogger("debug"),
+  telemetry: false
+});
+```
+
+### Custom Base URLs
+
+```typescript
+const client = createDecartClient({
+  apiKey: "your-api-key",
+  baseUrl: "https://custom-api.example.com",
+  realtimeBaseUrl: "wss://custom-ws.example.com"
+});
+```
+
+## Error Handling
+
+The function throws errors in the following cases:
+
+- **Invalid API Key**: When no API key is provided in direct mode (neither via `apiKey` option nor `DECART_API_KEY` environment variable)
+- **Invalid URL**: When `baseUrl`, `realtimeBaseUrl`, or `proxy` contains an invalid URL
+- **Mutual Exclusivity**: When both `proxy` and `apiKey` are provided (they cannot be used together)
+
+```typescript
+try {
+  const client = createDecartClient({ apiKey: "" });
+} catch (error) {
+  if (error.code === "INVALID_API_KEY") {
+    console.error("API key is required");
+  }
+}
+```
+
+## Usage with Different Clients
+
+### Process Client (Image Generation)
+
+```typescript
+const client = createDecartClient({ apiKey: "your-api-key" });
+
+const result = await client.process({
+  model: models.image("lucy-pro-t2i"),
+  prompt: "A beautiful sunset over the ocean"
+});
+```
+
+### Queue Client (Video Generation)
+
+```typescript
+const client = createDecartClient({ apiKey: "your-api-key" });
+
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful sunset over the ocean",
+  onStatusChange: (job) => console.log(`Job ${job.job_id}: ${job.status}`)
+});
+```
+
+### Realtime Client (Live Streaming)
+
+```typescript
+const client = createDecartClient({ apiKey: "your-api-key" });
+
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+const realtimeClient = await client.realtime.connect(stream, {
+  model: models.realtime("mirage"),
+  prompt: "anime style"
+});
+```
+
+### Tokens Client (Create Client Tokens)
+
+```typescript
+// Server-side: Create a client token
+const serverClient = createDecartClient({ 
+  apiKey: process.env.DECART_API_KEY 
+});
+
+const token = await serverClient.tokens.create();
+// Returns: { apiKey: "ek_...", expiresAt: "2024-12-15T12:10:00Z" }
+
+// Client-side: Use the client token
+const client = createDecartClient({ apiKey: token.apiKey });
+```
+
+## See Also
+
+- [DecartClientOptions](/api/client-options) - Configuration options type reference
+- [Process Client](/api/process/generate) - Synchronous image generation
+- [Queue Client](/api/queue/submit) - Async video generation
+- [Realtime Client](/api/realtime/connect) - WebRTC streaming
+- [Tokens Client](/api/tokens/create) - Client token management

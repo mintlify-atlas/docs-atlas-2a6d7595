@@ -1,0 +1,246 @@
+---
+title: "status()"
+description: "Get the current status of a queue job"
+---
+
+## Method Signature
+
+```typescript
+status(jobId: string): Promise<JobStatusResponse>
+```
+
+Get the current status of a job in the queue.
+
+## Parameters
+
+<ParamField path="jobId" type="string" required>
+  The unique job identifier returned from `submit()`
+</ParamField>
+
+## Returns
+
+<ResponseField name="Promise<JobStatusResponse>" type="object">
+  Promise that resolves with the current job status
+
+  <ResponseField name="job_id" type="string" required>
+    The job identifier
+  </ResponseField>
+
+  <ResponseField name="status" type="JobStatus" required>
+    Current job status. One of:
+    - `"pending"` - Job is queued and waiting to be processed
+    - `"processing"` - Job is currently being processed
+    - `"completed"` - Job finished successfully, result is ready
+    - `"failed"` - Job failed during processing
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { createDecartClient, models } from "@decart-ai/decart";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit a job
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano"
+});
+
+// Check status
+const status = await client.queue.status(job.job_id);
+console.log(status.status); // "pending" | "processing" | "completed" | "failed"
+```
+
+### Manual Polling Loop
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful sunset"
+});
+
+console.log(`Job submitted: ${job.job_id}`);
+
+// Poll until complete
+while (true) {
+  const status = await client.queue.status(job.job_id);
+  console.log(`Current status: ${status.status}`);
+  
+  if (status.status === "completed") {
+    console.log("Job completed successfully!");
+    const blob = await client.queue.result(job.job_id);
+    displayVideo(blob);
+    break;
+  } else if (status.status === "failed") {
+    console.error("Job failed");
+    break;
+  }
+  
+  // Wait before checking again
+  await new Promise(resolve => setTimeout(resolve, 2000));
+}
+```
+
+### With Status Display
+
+```typescript
+const statusDisplay = document.getElementById("status");
+const progressBar = document.getElementById("progress");
+
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Animate this image",
+  data: imageFile
+});
+
+const checkStatus = async () => {
+  const status = await client.queue.status(job.job_id);
+  
+  // Update UI based on status
+  switch (status.status) {
+    case "pending":
+      statusDisplay.textContent = "Waiting in queue...";
+      progressBar.value = 25;
+      break;
+    case "processing":
+      statusDisplay.textContent = "Generating video...";
+      progressBar.value = 50;
+      break;
+    case "completed":
+      statusDisplay.textContent = "Complete!";
+      progressBar.value = 100;
+      return true; // Done
+    case "failed":
+      statusDisplay.textContent = "Failed";
+      return true; // Done
+  }
+  
+  return false; // Not done yet
+};
+
+// Poll every 2 seconds
+const pollInterval = setInterval(async () => {
+  const done = await checkStatus();
+  if (done) {
+    clearInterval(pollInterval);
+    if (status.status === "completed") {
+      const blob = await client.queue.result(job.job_id);
+      displayVideo(blob);
+    }
+  }
+}, 2000);
+```
+
+### Checking Multiple Jobs
+
+```typescript
+const jobIds = [
+  "job_abc123",
+  "job_def456",
+  "job_ghi789"
+];
+
+// Check status of all jobs in parallel
+const statuses = await Promise.all(
+  jobIds.map(id => client.queue.status(id))
+);
+
+statuses.forEach((status, index) => {
+  console.log(`Job ${jobIds[index]}: ${status.status}`);
+});
+
+// Filter completed jobs
+const completedJobs = statuses.filter(s => s.status === "completed");
+console.log(`${completedJobs.length} jobs completed`);
+```
+
+### With TypeScript Type Guards
+
+```typescript
+const status = await client.queue.status(jobId);
+
+if (status.status === "completed") {
+  // Safe to fetch result
+  const blob = await client.queue.result(status.job_id);
+  processVideo(blob);
+} else if (status.status === "failed") {
+  // Handle failure
+  console.error(`Job ${status.job_id} failed`);
+  showErrorMessage("Video generation failed");
+} else {
+  // Still processing
+  console.log(`Job ${status.job_id} is ${status.status}`);
+  scheduleNextCheck();
+}
+```
+
+### With Exponential Backoff
+
+```typescript
+const checkWithBackoff = async (jobId: string, maxAttempts = 30) => {
+  let attempt = 0;
+  let delay = 1000; // Start with 1 second
+  
+  while (attempt < maxAttempts) {
+    const status = await client.queue.status(jobId);
+    
+    if (status.status === "completed" || status.status === "failed") {
+      return status;
+    }
+    
+    console.log(`Attempt ${attempt + 1}: ${status.status}`);
+    
+    // Wait with exponential backoff (max 10 seconds)
+    await new Promise(resolve => setTimeout(resolve, delay));
+    delay = Math.min(delay * 1.5, 10000);
+    attempt++;
+  }
+  
+  throw new Error("Max polling attempts reached");
+};
+
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A serene lake"
+});
+
+const finalStatus = await checkWithBackoff(job.job_id);
+console.log(`Final status: ${finalStatus.status}`);
+```
+
+## Error Handling
+
+```typescript
+try {
+  const status = await client.queue.status(jobId);
+  console.log(`Job status: ${status.status}`);
+} catch (error) {
+  if (error.code === "NOT_FOUND") {
+    console.error("Job not found. It may have expired.");
+  } else if (error.code === "NETWORK_ERROR") {
+    console.error("Network error:", error.message);
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+## Notes
+
+- This method only returns the current status, it does not wait for completion.
+- For automatic polling until completion, use `client.queue.submitAndPoll()` instead.
+- Jobs may expire after a certain period. Always handle the case where a job ID is not found.
+- Status checks are lightweight and can be called frequently, but consider implementing exponential backoff to reduce server load.
+- The `status` field is a discriminated union that allows for type-safe status checking.
+
+## See Also
+
+- [submit()](/api/queue/submit) - Submit a job
+- [submitAndPoll()](/api/queue/submit-and-poll) - Submit and wait for completion
+- [result()](/api/queue/result) - Retrieve job result

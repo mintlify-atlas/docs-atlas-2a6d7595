@@ -1,0 +1,230 @@
+---
+title: 'Submitting Jobs'
+description: 'Learn how to submit video generation jobs to the queue'
+---
+
+The `client.queue.submit()` method submits a job for asynchronous processing and returns immediately with a job ID.
+
+## Method Signature
+
+```typescript
+submit: <T extends VideoModelDefinition>(
+  options: QueueSubmitOptions<T>
+) => Promise<JobSubmitResponse>
+```
+
+### Parameters
+
+<ParamField path="options.model" type="VideoModelDefinition" required>
+  The video model to use. Get model definitions using `models.video()`.
+</ParamField>
+
+<ParamField path="options.signal" type="AbortSignal">
+  Optional `AbortSignal` for canceling the request.
+</ParamField>
+
+Additional parameters depend on the model type (see examples below).
+
+### Return Value
+
+```typescript
+type JobSubmitResponse = {
+  job_id: string;  // Unique identifier for the job
+  status: JobStatus;  // Initial status (usually "pending")
+}
+```
+
+## Text-to-Video (T2V)
+
+Generate video from a text prompt:
+
+```typescript
+import { createDecartClient, models } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A serene lake at sunset with mountains in the background",
+  resolution: "720p",  // "720p" | "480p" (default: "720p")
+  seed: 42,  // Optional: for reproducible results
+});
+
+console.log("Job ID:", job.job_id);
+console.log("Status:", job.status);
+```
+
+## Image-to-Video (I2V)
+
+Animate a static image:
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Camera slowly zooms in",
+  data: "https://example.com/image.jpg",  // URL, File, or Blob
+  resolution: "720p",
+  seed: 42,
+});
+
+console.log("Job ID:", job.job_id);
+```
+
+### File Input Options
+
+The `data` parameter accepts multiple input types:
+
+```typescript
+// URL string
+data: "https://example.com/image.jpg"
+
+// File object (browser)
+data: fileInputElement.files[0]
+
+// Blob
+data: new Blob([arrayBuffer], { type: "image/jpeg" })
+
+// URL object
+data: new URL("https://example.com/image.jpg")
+
+// ReadableStream
+data: response.body
+
+// React Native file object
+data: {
+  uri: "file:///path/to/image.jpg",
+  type: "image/jpeg",
+  name: "image.jpg"
+}
+```
+
+## Video-to-Video (V2V)
+
+Transform existing video with a prompt:
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-v2v"),
+  prompt: "Transform into a watercolor painting style",
+  data: "https://example.com/video.mp4",
+  resolution: "720p",
+  seed: 42,
+  enhance_prompt: true,  // Optional: enhance the prompt automatically
+});
+```
+
+### With Reference Image
+
+Use a reference image to guide the transformation:
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-v2v"),
+  prompt: "Add fireworks to the night sky",
+  data: "https://example.com/video.mp4",
+  reference_image: "https://example.com/fireworks.jpg",  // Optional reference
+  resolution: "720p",
+  seed: 42,
+});
+```
+
+## First-Last-Frame-to-Video (FLF2V)
+
+Generate video interpolation between two frames:
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-flf2v"),
+  prompt: "Smooth transition from day to night",
+  start: "https://example.com/day.jpg",  // First frame
+  end: "https://example.com/night.jpg",  // Last frame
+  resolution: "720p",
+  seed: 42,
+});
+```
+
+## Motion-Based Animation
+
+Animate an image with trajectory-guided motion:
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-motion"),
+  data: "https://example.com/character.jpg",
+  trajectory: [
+    { frame: 0, x: 100, y: 100 },   // Starting position
+    { frame: 60, x: 500, y: 300 },  // Middle position
+    { frame: 120, x: 900, y: 100 }, // End position
+  ],
+  resolution: "720p",
+  seed: 42,
+});
+```
+
+The trajectory defines the path of motion for an object in the image:
+- **`frame`**: Frame number (0-based)
+- **`x`**: Horizontal position in pixels
+- **`y`**: Vertical position in pixels
+
+## Video Restyling
+
+Restyle video using either a text prompt or reference image:
+
+### With Text Prompt
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-restyle-v2v"),
+  prompt: "Turn into anime style",
+  data: "https://example.com/video.mp4",
+  resolution: "720p",
+  enhance_prompt: true,
+  seed: 42,
+});
+```
+
+### With Reference Image
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-restyle-v2v"),
+  reference_image: "https://example.com/style-reference.jpg",
+  data: "https://example.com/video.mp4",
+  resolution: "720p",
+  seed: 42,
+});
+```
+
+<Note>
+  For `lucy-restyle-v2v`, you must provide **either** `prompt` **or** `reference_image`, but not both.
+  The `enhance_prompt` parameter is only valid when using a text prompt.
+</Note>
+
+## Error Handling
+
+The submit method validates inputs before sending the request:
+
+```typescript
+try {
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "",  // Invalid: empty prompt
+  });
+} catch (error) {
+  console.error("Invalid input:", error.message);
+  // Error: Invalid inputs for lucy-pro-t2v: String must contain at least 1 character(s)
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Polling" icon="arrows-rotate" href="/queue/polling">
+    Learn how to poll for job completion
+  </Card>
+  <Card title="Status & Errors" icon="circle-info" href="/queue/status">
+    Understand job status and error handling
+  </Card>
+</CardGroup>

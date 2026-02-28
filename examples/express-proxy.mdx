@@ -1,0 +1,439 @@
+---
+title: Express Proxy Server
+description: Secure your API key using a proxy middleware with Express
+---
+
+This example demonstrates how to use the Decart proxy middleware with Express to enable secure client-side SDK usage without exposing your API key to the browser.
+
+## What You'll Build
+
+An Express server that:
+- Proxies Decart API requests from the browser
+- Keeps your API key secure on the server
+- Requires zero changes to client-side SDK code
+- Serves a simple frontend demo
+
+## Architecture
+
+```
+Browser (SDK) → Express Server (Proxy) → api.decart.ai
+(no API key)      (API key attached)         (API)
+```
+
+The client-side SDK makes requests to your Express server at `/api/decart`, which securely attaches your API key and forwards them to Decart's API.
+
+## Prerequisites
+
+- Node.js 18 or higher
+- A Decart API key
+
+## Setup
+
+<Steps>
+  <Step title="Clone and navigate to the example">
+    ```bash
+    git clone https://github.com/decartai/sdk
+    cd sdk/examples/express-proxy
+    ```
+  </Step>
+
+  <Step title="Configure your API key">
+    Create a `.env` file:
+    ```bash
+    DECART_API_KEY=your-api-key-here
+    PORT=3000
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    From the repository root:
+    ```bash
+    cd ../..
+    pnpm install
+    pnpm build
+    ```
+  </Step>
+
+  <Step title="Start the server">
+    ```bash
+    cd examples/express-proxy
+    pnpm dev
+    ```
+    Open [http://localhost:3000](http://localhost:3000) in your browser.
+  </Step>
+</Steps>
+
+## Server Code
+
+The `src/server.ts` file sets up the proxy middleware:
+
+```typescript
+import "dotenv/config";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { handler, route } from "@decartai/proxy/express";
+import express from "express";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const app = express();
+
+// Serve static files (HTML, JS, CSS)
+app.use(express.static("public"));
+
+// Serve SDK from node_modules for the example
+const sdkDistPath = join(__dirname, "../../../packages/sdk/dist");
+app.use(
+  "/node_modules/@decartai/sdk",
+  express.static(sdkDistPath, {
+    setHeaders: (res, path) => {
+      if (path.endsWith(".js")) {
+        res.setHeader("Content-Type", "application/javascript");
+      }
+    },
+  })
+);
+
+// Mount the Decart proxy middleware
+// All requests to /api/decart/* will be proxied to api.decart.ai
+app.use(route, handler());
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Proxy endpoint: http://localhost:${port}${route}`);
+});
+```
+
+## Key Concepts
+
+### Proxy Middleware
+
+The proxy middleware intercepts requests and forwards them with your API key:
+
+```typescript
+import { handler, route } from "@decartai/proxy/express";
+
+app.use(route, handler());
+```
+
+- `route` is the path to mount the proxy (defaults to `/api/decart`)
+- `handler()` creates the middleware that forwards requests
+
+By default, the handler reads `DECART_API_KEY` from `process.env`. You can also pass it explicitly:
+
+```typescript
+app.use(route, handler({
+  apiKey: process.env.DECART_API_KEY,
+}));
+```
+
+### Client-Side Code
+
+In your frontend, use the SDK with the proxy route:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Decart Proxy Example</title>
+</head>
+<body>
+  <h1>Image Generation</h1>
+  <input id="prompt" type="text" placeholder="Enter a prompt" />
+  <button id="generate">Generate</button>
+  <div id="result"></div>
+
+  <script type="module">
+    import { createDecartClient, models } from '/node_modules/@decartai/sdk/index.js';
+
+    const client = createDecartClient({
+      proxy: '/api/decart', // Points to your Express proxy
+    });
+
+    document.getElementById('generate').addEventListener('click', async () => {
+      const prompt = document.getElementById('prompt').value;
+      const resultDiv = document.getElementById('result');
+
+      resultDiv.textContent = 'Generating...';
+
+      try {
+        const blob = await client.process({
+          model: models.image('lucy-pro-t2i'),
+          prompt,
+        });
+
+        const url = URL.createObjectURL(blob);
+        resultDiv.innerHTML = `<img src="${url}" alt="Generated image" />`;
+      } catch (error) {
+        resultDiv.textContent = `Error: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
+```
+
+### Security Benefits
+
+1. **API Key Never Exposed** - The key stays on the server
+2. **No Client-Side Secrets** - Browsers never see sensitive data
+3. **Full Control** - Add authentication, rate limiting, or logging
+4. **Simple Migration** - Works with existing SDK code
+
+## Using with ES Modules
+
+The example uses native ES modules in the browser:
+
+```html
+<script type="module">
+  import { createDecartClient, models } from '/node_modules/@decartai/sdk/index.js';
+  
+  const client = createDecartClient({
+    proxy: '/api/decart',
+  });
+  
+  // Use the SDK normally
+</script>
+```
+
+No build step required!
+
+## Using with CDN
+
+Alternatively, load the SDK from a CDN:
+
+```html
+<script type="module">
+  import { createDecartClient, models } from 'https://esm.sh/@decartai/sdk';
+  
+  const client = createDecartClient({
+    proxy: '/api/decart',
+  });
+</script>
+```
+
+## Adding Authentication
+
+Add your own authentication layer:
+
+```typescript
+import { handler, route } from "@decartai/proxy/express";
+
+// Custom auth middleware
+function requireAuth(req, res, next) {
+  const token = req.headers.authorization;
+  
+  if (!token || !isValidToken(token)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  
+  next();
+}
+
+// Apply auth before proxy
+app.use(route, requireAuth, handler());
+```
+
+## Rate Limiting
+
+Add rate limiting to prevent abuse:
+
+```typescript
+import rateLimit from "express-rate-limit";
+import { handler, route } from "@decartai/proxy/express";
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+});
+
+app.use(route, limiter, handler());
+```
+
+## Logging Requests
+
+Log all proxy requests:
+
+```typescript
+import { handler, route } from "@decartai/proxy/express";
+
+app.use(route, (req, res, next) => {
+  console.log(`Proxy request: ${req.method} ${req.path}`);
+  next();
+}, handler());
+```
+
+## Custom Proxy Route
+
+Change the proxy route path:
+
+```typescript
+import { handler } from "@decartai/proxy/express";
+
+app.use("/my-custom-proxy", handler());
+```
+
+Update client code:
+
+```javascript
+const client = createDecartClient({
+  proxy: '/my-custom-proxy',
+});
+```
+
+## Production Deployment
+
+### Environment Variables
+
+Set `DECART_API_KEY` in your production environment:
+
+```bash
+# Heroku
+heroku config:set DECART_API_KEY=your-key
+
+# Vercel
+vercel env add DECART_API_KEY
+
+# Docker
+docker run -e DECART_API_KEY=your-key ...
+```
+
+### CORS Configuration
+
+For production, configure CORS properly:
+
+```typescript
+import cors from "cors";
+
+app.use(cors({
+  origin: ['https://your-frontend.com'],
+  methods: ['GET', 'POST'],
+}));
+```
+
+### HTTPS
+
+Always use HTTPS in production to protect API requests.
+
+## Frontend Frameworks
+
+### React Example
+
+```tsx
+import { createDecartClient, models } from "@decartai/sdk";
+import { useState } from "react";
+
+const client = createDecartClient({
+  proxy: '/api/decart',
+});
+
+export function ImageGenerator() {
+  const [prompt, setPrompt] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    try {
+      const blob = await client.process({
+        model: models.image('lucy-pro-t2i'),
+        prompt,
+      });
+      const url = URL.createObjectURL(blob);
+      setImageUrl(url);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <input
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="Enter a prompt"
+      />
+      <button onClick={handleGenerate} disabled={loading}>
+        {loading ? "Generating..." : "Generate"}
+      </button>
+      {imageUrl && <img src={imageUrl} alt="Generated" />}
+    </div>
+  );
+}
+```
+
+### Vue Example
+
+```vue
+<template>
+  <div>
+    <input v-model="prompt" placeholder="Enter a prompt" />
+    <button @click="generate" :disabled="loading">
+      {{ loading ? 'Generating...' : 'Generate' }}
+    </button>
+    <img v-if="imageUrl" :src="imageUrl" alt="Generated" />
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue';
+import { createDecartClient, models } from '@decartai/sdk';
+
+const client = createDecartClient({
+  proxy: '/api/decart',
+});
+
+const prompt = ref('');
+const imageUrl = ref(null);
+const loading = ref(false);
+
+const generate = async () => {
+  loading.value = true;
+  try {
+    const blob = await client.process({
+      model: models.image('lucy-pro-t2i'),
+      prompt: prompt.value,
+    });
+    imageUrl.value = URL.createObjectURL(blob);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    loading.value = false;
+  }
+};
+</script>
+```
+
+## Troubleshooting
+
+### CORS Errors
+
+If you see CORS errors, ensure your Express app is properly configured:
+
+```typescript
+import cors from "cors";
+app.use(cors());
+```
+
+### Module Not Found
+
+If the SDK module isn't found, ensure you've built the packages:
+
+```bash
+cd ../.. && pnpm build
+```
+
+### 401 Unauthorized
+
+Check that `DECART_API_KEY` is set in your `.env` file.
+
+## Related Documentation
+
+- [Next.js Proxy Example](/examples/nextjs-proxy)
+- [Client Configuration](/api/create-client)
+- [Security Best Practices](/guides/proxy-setup)
+- [Express API Example](/examples/express-api)

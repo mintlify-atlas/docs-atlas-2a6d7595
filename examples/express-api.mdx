@@ -1,0 +1,406 @@
+---
+title: Express API Server
+description: Build a complete API server with Express for image and video generation
+---
+
+This example demonstrates how to build a complete REST API server using Express and the Decart SDK. It includes endpoints for both synchronous image generation and asynchronous video generation.
+
+## What You'll Build
+
+An Express server with:
+- Text-to-image generation (synchronous)
+- Image-to-image transformation (synchronous)
+- Video generation with job management (asynchronous)
+- Status checking and result retrieval
+- Automatic polling endpoints
+
+## Prerequisites
+
+- Node.js 18 or higher
+- A Decart API key
+
+## Setup
+
+<Steps>
+  <Step title="Clone and navigate to the example">
+    ```bash
+    git clone https://github.com/decartai/sdk
+    cd sdk/examples/express-api
+    ```
+  </Step>
+
+  <Step title="Configure your API key">
+    Create a `.env` file:
+    ```bash
+    DECART_API_KEY=your-api-key-here
+    PORT=3000
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    From the repository root:
+    ```bash
+    cd ../..
+    pnpm install
+    pnpm build
+    ```
+  </Step>
+
+  <Step title="Start the server">
+    ```bash
+    cd examples/express-api
+    pnpm dev
+    ```
+    Server runs at [http://localhost:3000](http://localhost:3000)
+  </Step>
+</Steps>
+
+## Complete Server Code
+
+```typescript
+import "dotenv/config";
+import express from "express";
+import { createDecartClient, models } from "@decartai/sdk";
+
+const app = express();
+app.use(express.json());
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY!,
+});
+
+// Generate image from text (sync - returns immediately)
+app.post("/api/image/generate", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    const blob = await client.process({
+      model: models.image("lucy-pro-t2i"),
+      prompt,
+    });
+
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "image/png");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Transform image (sync - returns immediately)
+app.post("/api/image/transform", async (req, res) => {
+  try {
+    const { prompt, imageUrl } = req.body;
+
+    const blob = await client.process({
+      model: models.image("lucy-pro-i2i"),
+      prompt,
+      data: imageUrl,
+    });
+
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "image/png");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Submit video generation job (async - returns job ID)
+app.post("/api/video/generate", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    const job = await client.queue.submit({
+      model: models.video("lucy-pro-t2v"),
+      prompt,
+    });
+
+    res.json({ jobId: job.job_id, status: job.status });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Check video job status
+app.get("/api/video/status/:jobId", async (req, res) => {
+  try {
+    const status = await client.queue.status(req.params.jobId);
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Get video result (when completed)
+app.get("/api/video/result/:jobId", async (req, res) => {
+  try {
+    const blob = await client.queue.result(req.params.jobId);
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "video/mp4");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Generate video with automatic polling (convenience endpoint)
+app.post("/api/video/generate-sync", async (req, res) => {
+  try {
+    const { prompt, videoUrl } = req.body;
+
+    const result = await client.queue.submitAndPoll({
+      model: videoUrl ? models.video("lucy-pro-v2v") : models.video("lucy-pro-t2v"),
+      prompt,
+      ...(videoUrl && { data: videoUrl }),
+    });
+
+    if (result.status === "completed") {
+      const buffer = Buffer.from(await result.data.arrayBuffer());
+      res.setHeader("Content-Type", "video/mp4");
+      res.send(buffer);
+    } else {
+      res.status(500).json({ error: result.error });
+    }
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+  console.log("");
+  console.log("Available endpoints:");
+  console.log("  POST /api/image/generate      - Generate image from text");
+  console.log("  POST /api/image/transform     - Transform image");
+  console.log("  POST /api/video/generate      - Submit video job");
+  console.log("  GET  /api/video/status/:id    - Check job status");
+  console.log("  GET  /api/video/result/:id    - Get video result");
+  console.log("  POST /api/video/generate-sync - Generate video (wait for result)");
+});
+```
+
+## API Endpoints
+
+### Text-to-Image Generation
+
+Generate an image from a text prompt (synchronous):
+
+```bash
+curl -X POST http://localhost:3000/api/image/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A beautiful sunset over mountains"}' \
+  --output image.png
+```
+
+### Image-to-Image Transformation
+
+Transform an existing image with a prompt:
+
+```bash
+curl -X POST http://localhost:3000/api/image/transform \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Oil painting style",
+    "imageUrl": "https://example.com/image.jpg"
+  }' \
+  --output transformed.png
+```
+
+### Video Generation (Async)
+
+Submit a video generation job:
+
+```bash
+curl -X POST http://localhost:3000/api/video/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A cat playing piano"}'
+```
+
+Response:
+```json
+{
+  "jobId": "abc123",
+  "status": "pending"
+}
+```
+
+Check job status:
+```bash
+curl http://localhost:3000/api/video/status/abc123
+```
+
+Response:
+```json
+{
+  "job_id": "abc123",
+  "status": "processing"
+}
+```
+
+Get completed video:
+```bash
+curl http://localhost:3000/api/video/result/abc123 --output video.mp4
+```
+
+### Video Generation (Sync)
+
+Generate video and wait for completion:
+
+```bash
+curl -X POST http://localhost:3000/api/video/generate-sync \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A timelapse of clouds moving"}' \
+  --output video.mp4
+```
+
+## Key Concepts
+
+### Process API (Synchronous)
+
+The Process API returns results immediately:
+
+```typescript
+const blob = await client.process({
+  model: models.image("lucy-pro-t2i"),
+  prompt: "A serene landscape",
+});
+
+// Convert to buffer and send
+const buffer = Buffer.from(await blob.arrayBuffer());
+res.setHeader("Content-Type", "image/png");
+res.send(buffer);
+```
+
+### Queue API (Asynchronous)
+
+The Queue API uses job IDs for long-running tasks:
+
+```typescript
+// Submit job
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A video prompt",
+});
+
+// Check status
+const status = await client.queue.status(job.job_id);
+
+// Get result when completed
+if (status.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+}
+```
+
+### Content Type Headers
+
+Set appropriate content types:
+
+```typescript
+// For images
+res.setHeader("Content-Type", "image/png");
+
+// For videos
+res.setHeader("Content-Type", "video/mp4");
+```
+
+### Error Handling
+
+Handle errors gracefully:
+
+```typescript
+try {
+  const blob = await client.process({ /* ... */ });
+  // Success
+} catch (error) {
+  res.status(500).json({ error: String(error) });
+}
+```
+
+## Testing with cURL
+
+Here are complete test commands:
+
+```bash
+# Test text-to-image
+curl -X POST http://localhost:3000/api/image/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A sunset over mountains"}' \
+  --output test-image.png
+
+# Test video generation (async)
+curl -X POST http://localhost:3000/api/video/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A cat playing piano"}'
+
+# Test video generation (sync - may take a while)
+curl -X POST http://localhost:3000/api/video/generate-sync \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Waves crashing on a beach"}' \
+  --output test-video.mp4
+```
+
+## Frontend Integration
+
+Example React component using the API:
+
+```tsx
+import { useState } from "react";
+
+export function ImageGenerator() {
+  const [prompt, setPrompt] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("http://localhost:3000/api/image/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      setImageUrl(url);
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <input
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="Enter a prompt"
+      />
+      <button onClick={handleGenerate} disabled={loading}>
+        {loading ? "Generating..." : "Generate"}
+      </button>
+      {imageUrl && <img src={imageUrl} alt="Generated" />}
+    </div>
+  );
+}
+```
+
+## Production Considerations
+
+1. **Add CORS** - Configure CORS for frontend access
+2. **Rate Limiting** - Implement rate limiting to prevent abuse
+3. **Authentication** - Add API key or JWT authentication
+4. **Job Storage** - Store job IDs in a database for persistence
+5. **Webhooks** - Notify clients when jobs complete
+6. **Caching** - Cache results for common prompts
+7. **Monitoring** - Log requests and errors
+
+## Related Documentation
+
+- [Process API Reference](/api/process/generate)
+- [Queue API Reference](/api/queue/submit)
+- [Image Models](/models/image)
+- [Video Models](/models/video)

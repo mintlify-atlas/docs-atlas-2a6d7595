@@ -1,0 +1,126 @@
+---
+title: 'Real-time API Overview'
+description: 'WebRTC-based real-time video transformation using the Decart SDK'
+---
+
+## Introduction
+
+The Real-time API provides WebRTC-based real-time video transformation capabilities. It enables low-latency, interactive video generation by streaming video input and receiving transformed output in real-time.
+
+## Supported Models
+
+The Real-time API supports the following models:
+
+- **mirage** - Real-time video restyling model
+- **mirage_v2** - Real-time video restyling model (v2)
+- **lucy_v2v_720p_rt** - Real-time video editing model (720p)
+- **lucy_2_rt** - Real-time video editing model (supports reference image)
+- **live_avatar** - Real-time avatar animation with audio input
+
+## Use Cases
+
+- **Live video restyling**: Transform webcam input in real-time with custom prompts
+- **Interactive video editing**: Apply real-time effects and transformations
+- **Avatar animation**: Animate avatars with live audio input
+- **Live streaming effects**: Add AI-powered effects to live streams
+
+## Basic Example
+
+Here's a complete example of connecting to the real-time API:
+
+```typescript
+import { createDecartClient } from '@decart-sdk/client';
+
+const client = createDecartClient({
+  apiKey: 'your-api-key'
+});
+
+// Get user's webcam stream
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: { width: 1280, height: 720 }
+});
+
+// Connect to real-time API
+const realtimeClient = await client.realtime.connect(stream, {
+  model: client.models.realtime('mirage_v2'),
+  onRemoteStream: (remoteStream) => {
+    // Display the transformed video
+    const videoElement = document.querySelector('video');
+    videoElement.srcObject = remoteStream;
+  },
+  initialState: {
+    prompt: {
+      text: 'cinematic lighting, professional photography',
+      enhance: true
+    }
+  }
+});
+
+// Monitor connection state
+realtimeClient.on('connectionChange', (state) => {
+  console.log('Connection state:', state);
+});
+
+// Handle errors
+realtimeClient.on('error', (error) => {
+  console.error('Real-time error:', error);
+});
+
+// Later: disconnect
+realtimeClient.disconnect();
+```
+
+## Client API
+
+The `RealTimeClient` returned by `connect()` provides:
+
+```typescript
+interface RealTimeClient {
+  // Update prompt
+  setPrompt(prompt: string, options?: { enhance?: boolean }): Promise<void>;
+  
+  // Update state (prompt and/or image)
+  set(input: { prompt?: string; enhance?: boolean; image?: Blob | File | string | null }): Promise<void>;
+  
+  // Set reference image (for lucy_2_rt)
+  setImage(image: Blob | File | string | null, options?: { 
+    prompt?: string; 
+    enhance?: boolean; 
+    timeout?: number 
+  }): Promise<void>;
+  
+  // Play audio (live_avatar only)
+  playAudio?(audio: Blob | File | ArrayBuffer): Promise<void>;
+  
+  // Connection status
+  isConnected(): boolean;
+  getConnectionState(): ConnectionState;
+  
+  // Session info
+  sessionId: string | null;
+  subscribeToken: string | null;
+  
+  // Event listeners
+  on<K extends keyof Events>(event: K, listener: (data: Events[K]) => void): void;
+  off<K extends keyof Events>(event: K, listener: (data: Events[K]) => void): void;
+  
+  // Cleanup
+  disconnect(): void;
+}
+```
+
+## Connection States
+
+The real-time connection progresses through these states:
+
+- **connecting** - Establishing WebRTC connection
+- **connected** - Connected and ready to stream
+- **generating** - Currently generating/transforming video
+- **reconnecting** - Attempting to reconnect after disconnection
+- **disconnected** - Connection closed
+
+## Next Steps
+
+- [Connection Management](/realtime/connection) - Learn about connecting and disconnecting
+- [State Management](/realtime/state-management) - Update prompts and parameters
+- [Events & Diagnostics](/realtime/events) - Monitor connection and handle errors

@@ -1,0 +1,97 @@
+---
+title: "Process API Overview"
+description: "Learn about synchronous image generation with the Decart Process API"
+---
+
+The Process API provides synchronous image generation for the Decart AI SDK. Unlike the Queue API which handles asynchronous video generation jobs, the Process API returns results immediately, making it ideal for real-time applications and interactive experiences.
+
+## Supported Models
+
+The Process API supports the following image generation models:
+
+<CardGroup cols={2}>
+  <Card title="lucy-pro-t2i" icon="wand-magic-sparkles">
+    Text-to-image generation with professional quality output
+  </Card>
+  <Card title="lucy-pro-i2i" icon="image">
+    Image-to-image transformation and editing
+  </Card>
+</CardGroup>
+
+## When to Use Process vs Queue
+
+### Use the Process API when:
+- You need **immediate results** (synchronous)
+- Working with **image generation** (text-to-image or image-to-image)
+- Building real-time or interactive applications
+- You want a simpler API without polling or status checks
+
+### Use the Queue API when:
+- You need **video generation** (text-to-video, image-to-video, etc.)
+- Working with longer-running jobs
+- You need to track job status and handle asynchronous workflows
+
+## Quick Start Example
+
+Here's a basic example of generating an image using the Process API:
+
+```typescript
+import { createDecartClient, models } from '@decartai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Generate an image synchronously
+const imageBlob = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'A serene Japanese garden with cherry blossoms and a wooden bridge',
+  seed: 42,
+  resolution: '720p',
+  orientation: 'landscape',
+});
+
+// The result is a Blob that you can save or display
+const buffer = Buffer.from(await imageBlob.arrayBuffer());
+fs.writeFileSync('output.png', buffer);
+```
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="Synchronous Response">
+    The Process API returns the generated image immediately as a Blob. No polling or status checks required.
+  </Accordion>
+
+  <Accordion title="Reproducible Results">
+    Use the `seed` parameter to generate the same image consistently with the same inputs.
+  </Accordion>
+
+  <Accordion title="Flexible Resolution">
+    Choose between 480p and 720p resolution based on your needs.
+  </Accordion>
+
+  <Accordion title="Prompt Enhancement">
+    Optional prompt enhancement improves generation quality (enabled by default for i2i).
+  </Accordion>
+</AccordionGroup>
+
+## Return Type
+
+The `client.process()` method returns a `Promise<Blob>` containing the generated image in PNG format. You can:
+
+- Save it to a file using Node.js filesystem APIs
+- Display it in a browser using `URL.createObjectURL()`
+- Send it via HTTP responses
+- Convert it to base64 for embedding
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Synchronous Generation" href="/process/synchronous-generation" icon="bolt">
+    Learn how to use the Process API with detailed examples
+  </Card>
+  <Card title="Queue API" href="/queue/overview" icon="clock">
+    Explore asynchronous video generation with the Queue API
+  </Card>
+</CardGroup>

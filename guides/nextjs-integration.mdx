@@ -1,0 +1,335 @@
+---
+title: Next.js Integration
+description: Integrate the Decart AI SDK with Next.js using App Router and API routes
+---
+
+The Decart AI SDK integrates seamlessly with Next.js, supporting both client-side real-time video and server-side API routes. This guide covers both approaches.
+
+## Installation
+
+```bash
+npm install @decartai/sdk
+# or
+pnpm add @decartai/sdk
+# or
+yarn add @decartai/sdk
+```
+
+## Client Components for Real-Time Video
+
+### Video Stream Component
+
+Create a client component for real-time video processing:
+
+```tsx
+"use client";
+
+import {
+  createDecartClient,
+  type DecartSDKError,
+  models,
+  type RealTimeClient,
+} from "@decartai/sdk";
+import { useEffect, useRef, useState } from "react";
+
+interface VideoStreamProps {
+  prompt: string;
+}
+
+export function VideoStream({ prompt }: VideoStreamProps) {
+  const inputRef = useRef<HTMLVideoElement>(null);
+  const outputRef = useRef<HTMLVideoElement>(null);
+  const realtimeClientRef = useRef<RealTimeClient | null>(null);
+  const [status, setStatus] = useState<string>("idle");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function start() {
+      try {
+        const model = models.realtime("mirage_v2");
+
+        setStatus("requesting camera...");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            frameRate: model.fps,
+            width: model.width,
+            height: model.height,
+          },
+        });
+
+        if (!mounted) return;
+
+        if (inputRef.current) {
+          inputRef.current.srcObject = stream;
+        }
+
+        // Fetch client token from our backend API
+        const tokenResponse = await fetch("/api/realtime-token", {
+          method: "POST",
+        });
+        if (!tokenResponse.ok) {
+          throw new Error("Failed to get client token");
+        }
+        const { apiKey } = await tokenResponse.json();
+
+        if (!mounted) return;
+
+        setStatus("connecting...");
+
+        const client = createDecartClient({ apiKey });
+
+        const realtimeClient = await client.realtime.connect(stream, {
+          model,
+          onRemoteStream: (transformedStream: MediaStream) => {
+            if (outputRef.current) {
+              outputRef.current.srcObject = transformedStream;
+            }
+          },
+          initialState: {
+            prompt: { text: prompt, enhance: true },
+          },
+        });
+
+        realtimeClientRef.current = realtimeClient;
+
+        // Subscribe to events
+        realtimeClient.on("connectionChange", (state) => {
+          setStatus(state);
+        });
+
+        realtimeClient.on("error", (error: DecartSDKError) => {
+          setStatus(`error: ${error.message}`);
+        });
+      } catch (error) {
+        setStatus(`error: ${error}`);
+      }
+    }
+
+    start();
+
+    return () => {
+      mounted = false;
+      realtimeClientRef.current?.disconnect();
+    };
+  }, []);
+
+  // Update prompt when it changes
+  useEffect(() => {
+    if (realtimeClientRef.current?.isConnected()) {
+      realtimeClientRef.current.setPrompt(prompt, { enhance: true });
+    }
+  }, [prompt]);
+
+  return (
+    <div>
+      <p>Status: {status}</p>
+      <div style={{ display: "flex", gap: "1rem" }}>
+        <div>
+          <h3>Input</h3>
+          <video ref={inputRef} autoPlay muted playsInline width={400} />
+        </div>
+        <div>
+          <h3>Styled Output</h3>
+          <video ref={outputRef} autoPlay playsInline width={400} />
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### Page Component
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { VideoStream } from "../components/video-stream";
+
+export default function Home() {
+  const [prompt, setPrompt] = useState("anime style, vibrant colors");
+
+  return (
+    <main style={{ padding: "2rem", fontFamily: "system-ui" }}>
+      <h1>Decart Realtime Demo</h1>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Style prompt:
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            style={{ marginLeft: "0.5rem", width: "300px", padding: "0.5rem" }}
+          />
+        </label>
+      </div>
+
+      <VideoStream prompt={prompt} />
+    </main>
+  );
+}
+```
+
+## API Routes for Token Generation
+
+Create an API route to generate client tokens securely on the server:
+
+```ts
+// app/api/realtime-token/route.ts
+import { createDecartClient } from "@decartai/sdk";
+import { NextResponse } from "next/server";
+
+const DECART_API_KEY = process.env.DECART_API_KEY;
+
+export async function POST() {
+  try {
+    if (!DECART_API_KEY) {
+      return NextResponse.json(
+        { error: "DECART_API_KEY is not set" },
+        { status: 500 }
+      );
+    }
+
+    const client = createDecartClient({
+      apiKey: DECART_API_KEY,
+    });
+    const token = await client.tokens.create();
+
+    return NextResponse.json(token);
+  } catch (error) {
+    console.error("Failed to create client token:", error);
+    return NextResponse.json(
+      { error: "Failed to create client token" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+## Using the Proxy Mode
+
+For production applications, use proxy mode to keep your API key secure. This requires the `@decartai/proxy` package.
+
+### Installation
+
+```bash
+npm install @decartai/proxy
+```
+
+### Proxy API Route
+
+```ts
+// app/api/decart/[...path]/route.ts
+import { route } from "@decartai/proxy/nextjs";
+
+export const { GET, POST } = route();
+```
+
+This creates a proxy endpoint at `/api/decart/*` that forwards requests to the Decart API.
+
+### Client Usage with Proxy
+
+```tsx
+"use client";
+
+import { PROXY_ROUTE } from "@decartai/proxy/nextjs";
+import { createDecartClient, models } from "@decartai/sdk";
+import { useState } from "react";
+
+export default function Home() {
+  const [prompt, setPrompt] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    setImageUrl(null);
+
+    try {
+      // Use proxy mode - no API key needed in client code
+      const client = createDecartClient({ proxy: PROXY_ROUTE });
+      const blob = await client.process({
+        model: models.image("lucy-pro-t2i"),
+        prompt,
+      });
+      const url = URL.createObjectURL(blob);
+      setImageUrl(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate image");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main>
+      <h1>Decart SDK - Next.js Proxy Example</h1>
+      <input
+        type="text"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="Enter a prompt"
+        disabled={loading}
+      />
+      <button onClick={handleGenerate} disabled={loading || !prompt.trim()}>
+        {loading ? "Generating..." : "Generate Image"}
+      </button>
+
+      {error && <div>Error: {error}</div>}
+      {imageUrl && <img src={imageUrl} alt="Generated" />}
+    </main>
+  );
+}
+```
+
+## Environment Variables
+
+Create a `.env.local` file:
+
+```bash
+DECART_API_KEY=your_api_key_here
+```
+
+## Client vs Server Components
+
+### Client Components (`"use client"`)
+
+Use client components for:
+- Real-time video streaming (requires WebRTC)
+- Camera access (`navigator.mediaDevices`)
+- Interactive UI with hooks
+
+### Server Components (default)
+
+Use server components for:
+- Fetching data at build time
+- SEO-optimized content
+- Secure API key usage
+
+### API Routes
+
+Use API routes for:
+- Token generation
+- Proxying requests to Decart API
+- Server-side image/video generation
+- Keeping API keys secure
+
+## Best Practices
+
+1. **Never expose your API key in client code** - Use tokens or proxy mode
+2. **Use API routes for token generation** - Keep your main API key server-side
+3. **Mark components with `"use client"`** - Required for hooks and WebRTC
+4. **Clean up connections** - Always disconnect in cleanup functions
+5. **Handle loading states** - Provide feedback during async operations
+
+## Next Steps
+
+- [Proxy Setup](/guides/proxy-setup) - Detailed guide on proxy configuration
+- [Server-Side Usage](/guides/server-side) - Using the SDK in Node.js/Edge runtimes
+- [Error Handling](/guides/error-handling) - Handle errors gracefully

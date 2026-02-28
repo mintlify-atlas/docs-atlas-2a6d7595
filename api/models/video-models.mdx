@@ -1,0 +1,435 @@
+---
+title: "Video Models"
+description: "Asynchronous video generation models for high-quality output"
+---
+
+Video models provide high-quality video generation through the queue API. These models are optimized for quality and support various input types including text, images, and videos.
+
+## Available Models
+
+<CardGroup cols={2}>
+  <Card title="lucy-pro-t2v" icon="text">
+    Text-to-video (Pro quality)
+  </Card>
+  <Card title="lucy-pro-i2v" icon="image">
+    Image-to-video (Pro quality)
+  </Card>
+  <Card title="lucy-pro-v2v" icon="film">
+    Video-to-video (Pro quality)
+  </Card>
+  <Card title="lucy-pro-flf2v" icon="timeline">
+    First-last-frame-to-video (Pro quality)
+  </Card>
+  <Card title="lucy-dev-i2v" icon="flask">
+    Image-to-video (Dev quality)
+  </Card>
+  <Card title="lucy-fast-v2v" icon="bolt">
+    Video-to-video (Fast quality)
+  </Card>
+  <Card title="lucy-motion" icon="arrows-up-down-left-right">
+    Motion-based image-to-video
+  </Card>
+  <Card title="lucy-restyle-v2v" icon="wand-magic-sparkles">
+    Video restyling
+  </Card>
+</CardGroup>
+
+## Model Specifications
+
+| Model | FPS | Default Resolution | Supported Resolutions | Output Duration |
+|-------|-----|-------------------|----------------------|----------------|
+| `lucy-pro-t2v` | 25 | 720p | 720p, 480p | 5 seconds |
+| `lucy-pro-i2v` | 25 | 720p | 720p, 480p | 5 seconds |
+| `lucy-pro-v2v` | 25 | 720p | 720p | 5 seconds |
+| `lucy-pro-flf2v` | 25 | 720p | 720p, 480p | 5 seconds |
+| `lucy-dev-i2v` | 25 | 720p | 720p only | 5 seconds |
+| `lucy-fast-v2v` | 25 | 720p | 720p | 5 seconds |
+| `lucy-motion` | 25 | 720p | 720p only | 5 seconds |
+| `lucy-restyle-v2v` | 22 | 720p | 720p | 5 seconds |
+
+## Usage
+
+### Accessing Models
+
+Use the `models.video()` factory function to access video model definitions:
+
+```typescript
+import { models } from '@decart-ai/sdk';
+
+const t2vModel = models.video('lucy-pro-t2v');
+const i2vModel = models.video('lucy-pro-i2v');
+const v2vModel = models.video('lucy-pro-v2v');
+const flf2vModel = models.video('lucy-pro-flf2v');
+const motionModel = models.video('lucy-motion');
+const restyleModel = models.video('lucy-restyle-v2v');
+```
+
+### Model Definition Properties
+
+```typescript
+interface VideoModelDefinition {
+  name: string;           // Model identifier
+  urlPath: string;        // Process API endpoint
+  queueUrlPath: string;   // Queue API endpoint
+  fps: number;            // Frames per second
+  width: number;          // Video width (at 720p)
+  height: number;         // Video height (at 720p)
+  inputSchema: ZodObject; // Input validation schema
+}
+```
+
+## Input Requirements
+
+### lucy-pro-t2v (Text-to-Video)
+
+Generate videos from text prompts.
+
+```typescript
+interface LucyProT2VInput {
+  prompt: string;              // 1-1000 characters
+  seed?: number;               // Optional seed for reproducibility
+  resolution?: "720p" | "480p"; // Default: "720p"
+  orientation?: string;        // Optional orientation
+}
+```
+
+**Example:**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-pro-t2v'),
+  input: {
+    prompt: "A serene lake at sunset with mountains in the background",
+    resolution: "720p",
+    seed: 42,
+  },
+});
+```
+
+### lucy-pro-i2v (Image-to-Video)
+
+Animate images into videos.
+
+```typescript
+interface LucyProI2VInput {
+  prompt: string;              // 1-1000 characters
+  data: FileInput;             // Image file (File, Blob, URL, etc.)
+  seed?: number;               // Optional seed
+  resolution?: "720p" | "480p"; // Default: "720p"
+}
+```
+
+**Example:**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-pro-i2v'),
+  input: {
+    prompt: "The lake ripples gently as birds fly overhead",
+    data: imageFile, // File, Blob, ReadableStream, URL, or string URL
+    resolution: "720p",
+  },
+});
+```
+
+### lucy-pro-v2v (Video-to-Video)
+
+Transform videos with prompts and optional reference images.
+
+```typescript
+interface LucyProV2VInput {
+  prompt: string;              // 1-1000 characters
+  data: FileInput;             // Video file
+  reference_image?: FileInput; // Optional reference image
+  seed?: number;               // Optional seed
+  resolution?: "720p";         // Default: "720p"
+  enhance_prompt?: boolean;    // Enhance prompt with AI
+}
+```
+
+**Example:**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-pro-v2v'),
+  input: {
+    prompt: "Transform into a cyberpunk style",
+    data: videoFile,
+    reference_image: styleReferenceImage,
+    enhance_prompt: true,
+  },
+});
+```
+
+### lucy-pro-flf2v (First-Last-Frame-to-Video)
+
+Generate videos from start and end frames.
+
+```typescript
+interface LucyProFLF2VInput {
+  prompt: string;              // 1-1000 characters
+  start: FileInput;            // Start frame image
+  end: FileInput;              // End frame image
+  seed?: number;               // Optional seed
+  resolution?: "720p" | "480p"; // Default: "720p"
+}
+```
+
+**Example:**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-pro-flf2v'),
+  input: {
+    prompt: "Smooth transition from day to night",
+    start: dayImage,
+    end: nightImage,
+    resolution: "720p",
+  },
+});
+```
+
+### lucy-dev-i2v (Dev Quality I2V)
+
+Development quality image-to-video (720p only).
+
+```typescript
+interface LucyDevI2VInput {
+  prompt: string;      // 1-1000 characters
+  data: FileInput;     // Image file
+  seed?: number;       // Optional seed
+  resolution?: "720p"; // Only 720p supported
+}
+```
+
+**Example:**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-dev-i2v'),
+  input: {
+    prompt: "Gentle camera pan across the scene",
+    data: imageFile,
+  },
+});
+```
+
+### lucy-fast-v2v (Fast Quality V2V)
+
+Fast video-to-video transformation.
+
+```typescript
+interface LucyFastV2VInput {
+  prompt: string;           // 1-1000 characters
+  data: FileInput;          // Video file
+  seed?: number;            // Optional seed
+  resolution?: "720p";      // Default: "720p"
+  enhance_prompt?: boolean; // Enhance prompt
+}
+```
+
+**Example:**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-fast-v2v'),
+  input: {
+    prompt: "Add dramatic lighting",
+    data: videoFile,
+    enhance_prompt: true,
+  },
+});
+```
+
+### lucy-motion (Motion-Based I2V)
+
+Animate images with trajectory-guided motion.
+
+```typescript
+interface LucyMotionInput {
+  data: FileInput;           // Image file
+  trajectory: Array<{        // 2-1000 trajectory points
+    frame: number;           // Frame number (0+)
+    x: number;               // X coordinate (0+)
+    y: number;               // Y coordinate (0+)
+  }>;
+  seed?: number;             // Optional seed
+  resolution?: "720p";       // Only 720p supported
+}
+```
+
+**Example:**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-motion'),
+  input: {
+    data: imageFile,
+    trajectory: [
+      { frame: 0, x: 100, y: 100 },
+      { frame: 50, x: 200, y: 150 },
+      { frame: 100, x: 300, y: 100 },
+    ],
+  },
+});
+```
+
+### lucy-restyle-v2v (Video Restyling)
+
+Restyle videos using text prompts or reference images.
+
+```typescript
+interface LucyRestyleV2VInput {
+  // Must provide EITHER prompt OR reference_image (not both)
+  prompt?: string;             // Text prompt (1-1000 chars)
+  reference_image?: FileInput; // Reference image for styling
+  data: FileInput;             // Video file
+  seed?: number;               // Optional seed
+  resolution?: "720p";         // Default: "720p"
+  enhance_prompt?: boolean;    // Only valid with prompt
+}
+```
+
+**Example (with prompt):**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-restyle-v2v'),
+  input: {
+    prompt: "Oil painting style",
+    data: videoFile,
+    enhance_prompt: true,
+  },
+});
+```
+
+**Example (with reference image):**
+```typescript
+const job = await client.queue.submit({
+  model: models.video('lucy-restyle-v2v'),
+  input: {
+    reference_image: styleImage,
+    data: videoFile,
+  },
+});
+```
+
+## File Input Types
+
+All models accept multiple file input formats:
+
+```typescript
+type FileInput = 
+  | File              // Browser File object
+  | Blob              // Blob data
+  | ReadableStream    // Stream
+  | URL               // URL object
+  | string            // URL string
+  | {                 // React Native format
+      uri: string;
+      type: string;
+      name: string;
+    };
+```
+
+## Queue API Usage
+
+Video models use the queue API for asynchronous processing:
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit job
+const job = await client.queue.submit({
+  model: models.video('lucy-pro-t2v'),
+  input: {
+    prompt: "A beautiful sunset over the ocean",
+    resolution: "720p",
+  },
+});
+
+console.log('Job ID:', job.id);
+
+// Poll for completion
+const result = await client.queue.waitForCompletion(job.id);
+
+if (result.status === 'completed') {
+  console.log('Video URL:', result.output.url);
+  // Download or display the video
+}
+```
+
+## Type Definitions
+
+```typescript
+type VideoModels = 
+  | "lucy-dev-i2v"
+  | "lucy-fast-v2v"
+  | "lucy-pro-t2v"
+  | "lucy-pro-i2v"
+  | "lucy-pro-v2v"
+  | "lucy-pro-flf2v"
+  | "lucy-motion"
+  | "lucy-restyle-v2v";
+
+function models.video<T extends VideoModels>(
+  model: T
+): ModelDefinition<T>;
+```
+
+## Performance Considerations
+
+- **Processing Time**: Video generation takes longer than real-time (typically 30s-5min)
+- **Quality Tiers**: Pro models offer highest quality, Fast models prioritize speed
+- **Resolution**: 720p provides best quality, 480p processes faster
+- **Prompt Enhancement**: Enable `enhance_prompt` for better interpretation
+- **Seeds**: Use same seed for reproducible results
+
+## Best Practices
+
+1. **Use appropriate quality tier**: Pro for final output, Fast for prototyping
+2. **Optimize resolution**: Use 480p for faster processing when quality isn't critical
+3. **Provide clear prompts**: Detailed prompts (50-200 chars) work best
+4. **Set seeds for consistency**: Use fixed seeds when iterating on prompts
+5. **Monitor job status**: Implement proper polling with error handling
+
+## Error Handling
+
+```typescript
+try {
+  const job = await client.queue.submit({
+    model: models.video('lucy-pro-t2v'),
+    input: {
+      prompt: "A serene landscape",
+    },
+  });
+  
+  const result = await client.queue.waitForCompletion(job.id, {
+    pollingInterval: 2000,
+    timeout: 300000, // 5 minutes
+  });
+  
+  if (result.status === 'failed') {
+    console.error('Generation failed:', result.error);
+  }
+} catch (error) {
+  if (error.code === 'TIMEOUT') {
+    console.error('Job timed out');
+  } else if (error.code === 'VALIDATION_ERROR') {
+    console.error('Invalid input:', error.message);
+  }
+}
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Real-time Models" href="/api/models/realtime-models" icon="bolt">
+    Real-time streaming models
+  </Card>
+  <Card title="Image Models" href="/api/models/image-models" icon="image">
+    Image generation models
+  </Card>
+  <Card title="Queue Client" href="/api/queue/submit" icon="list">
+    Queue client API reference
+  </Card>
+  <Card title="Video Generation Guide" href="/guides/video-generation" icon="film">
+    Video generation guide
+  </Card>
+</CardGroup>

@@ -1,0 +1,291 @@
+---
+title: "client.tokens.create()"
+description: "Create short-lived client tokens for secure browser-side API access"
+---
+
+## Overview
+
+The `tokens.create()` method generates short-lived API keys (client tokens) that are safe to use in client-side applications. These tokens provide a secure way to allow browser or mobile apps to access the Decart API without exposing your primary API key.
+
+## Method Signature
+
+```typescript
+client.tokens.create(
+  options?: CreateTokenOptions
+): Promise<CreateTokenResponse>
+```
+
+## Parameters
+
+<ParamField path="metadata" type="Record<string, unknown>">
+  Optional custom key-value pairs to attach to the client token.
+  
+  Use metadata to track token usage, associate tokens with users, or store application-specific data.
+  
+  ```typescript
+  {
+    userId: "user_123",
+    role: "viewer",
+    sessionId: "sess_abc"
+  }
+  ```
+</ParamField>
+
+## Return Value
+
+<ResponseField name="apiKey" type="string">
+  The generated client token (ephemeral key) that starts with `ek_`.
+  
+  This key can be safely used in client-side code.
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string">
+  ISO 8601 timestamp indicating when the token expires.
+  
+  Example: `"2024-12-15T12:10:00Z"`
+</ResponseField>
+
+## Examples
+
+### Server-Side Token Creation
+
+Create a client token on your backend server:
+
+```typescript
+import { createDecartClient } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY, // Your primary API key
+});
+
+// Create a client token
+const token = await client.tokens.create();
+
+console.log(token);
+// {
+//   apiKey: "ek_...",
+//   expiresAt: "2024-12-15T12:10:00Z"
+// }
+
+// Send the token to your frontend
+res.json({ clientToken: token.apiKey });
+```
+
+### With Metadata
+
+Attach custom metadata to track token usage:
+
+```typescript
+const token = await client.tokens.create({
+  metadata: {
+    userId: "user_12345",
+    role: "viewer",
+    sessionId: "sess_abc123",
+    tier: "premium",
+  },
+});
+
+console.log(token);
+// {
+//   apiKey: "ek_...",
+//   expiresAt: "2024-12-15T12:10:00Z"
+// }
+```
+
+### Client-Side Usage
+
+Use the client token in your browser application:
+
+```typescript
+// In your frontend (React, Vue, etc.)
+import { createDecartClient, models } from "@decart/sdk";
+
+// 1. Fetch client token from your backend
+const response = await fetch("/api/get-client-token", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${userSessionToken}` },
+});
+
+const { clientToken } = await response.json();
+
+// 2. Create Decart client with the client token
+const client = createDecartClient({
+  apiKey: clientToken, // Use the ephemeral key
+});
+
+// 3. Use the client to generate content
+const blob = await client.process({
+  model: models.image("lucy-pro-t2i"),
+  prompt: "A beautiful sunset over the ocean",
+});
+
+const imageUrl = URL.createObjectURL(blob);
+document.getElementById("output").src = imageUrl;
+```
+
+### Full Example: Next.js API Route
+
+Complete server-side implementation for Next.js:
+
+```typescript
+// app/api/get-client-token/route.ts
+import { createDecartClient } from "@decart/sdk";
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  // Verify user authentication
+  const session = await getSession(request);
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  // Create Decart client with your server-side API key
+  const client = createDecartClient({
+    apiKey: process.env.DECART_API_KEY!,
+  });
+
+  // Generate client token with user metadata
+  const token = await client.tokens.create({
+    metadata: {
+      userId: session.userId,
+      email: session.email,
+      createdAt: new Date().toISOString(),
+    },
+  });
+
+  return NextResponse.json({
+    clientToken: token.apiKey,
+    expiresAt: token.expiresAt,
+  });
+}
+```
+
+### Token Refresh Pattern
+
+Handle token expiration gracefully:
+
+```typescript
+class TokenManager {
+  private token: string | null = null;
+  private expiresAt: Date | null = null;
+
+  async getToken(): Promise<string> {
+    // Check if token is expired or about to expire (5 min buffer)
+    if (!this.token || !this.expiresAt || 
+        Date.now() > this.expiresAt.getTime() - 5 * 60 * 1000) {
+      await this.refreshToken();
+    }
+    return this.token!;
+  }
+
+  private async refreshToken(): Promise<void> {
+    const response = await fetch("/api/get-client-token", {
+      method: "POST",
+    });
+
+    const data = await response.json();
+    this.token = data.clientToken;
+    this.expiresAt = new Date(data.expiresAt);
+  }
+}
+
+const tokenManager = new TokenManager();
+
+// Use the token manager
+const clientToken = await tokenManager.getToken();
+const client = createDecartClient({ apiKey: clientToken });
+```
+
+## Security Best Practices
+
+<Warning>
+  **Never expose your primary API key in client-side code.** Always use client tokens for browser and mobile applications.
+</Warning>
+
+1. **Server-side creation**: Always create client tokens on your backend server, never in client-side code
+2. **User authentication**: Verify user identity before issuing client tokens
+3. **Metadata tracking**: Use metadata to track token usage and associate with users
+4. **Token rotation**: Implement token refresh logic to handle expiration
+5. **Rate limiting**: Add rate limiting on your token creation endpoint to prevent abuse
+
+## Error Handling
+
+The method throws errors in the following cases:
+
+```typescript
+try {
+  const token = await client.tokens.create({
+    metadata: { userId: "user_123" },
+  });
+} catch (error) {
+  if (error.code === "TOKEN_CREATE_ERROR") {
+    console.error("Failed to create token:", error.message);
+    console.error("Status code:", error.status);
+  } else if (error.code === "AUTHENTICATION_ERROR") {
+    console.error("Invalid API key");
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+## Common Use Cases
+
+### User-Scoped Tokens
+
+Create tokens specific to individual users:
+
+```typescript
+const token = await client.tokens.create({
+  metadata: {
+    userId: currentUser.id,
+    username: currentUser.username,
+    permissions: ["generate:image"],
+  },
+});
+```
+
+### Session-Based Tokens
+
+Tie tokens to user sessions:
+
+```typescript
+const token = await client.tokens.create({
+  metadata: {
+    sessionId: req.sessionID,
+    ipAddress: req.ip,
+    userAgent: req.headers["user-agent"],
+  },
+});
+```
+
+### Multi-Tenant Applications
+
+Associate tokens with organizations:
+
+```typescript
+const token = await client.tokens.create({
+  metadata: {
+    organizationId: org.id,
+    userId: user.id,
+    tier: org.subscriptionTier,
+  },
+});
+```
+
+## Notes
+
+- Client tokens are short-lived and expire automatically
+- Metadata is optional but recommended for tracking and auditing
+- Client tokens have the same API access as your primary key
+- The `ek_` prefix identifies ephemeral (client) keys
+- There is no limit on the number of client tokens you can create
+- Expired tokens cannot be refreshed; create a new token instead
+
+## Related Methods
+
+- [client.process()](/api/process/generate) - Use client tokens for image generation
+- [client.queue.submit()](/api/queue/submit) - Use client tokens for video generation

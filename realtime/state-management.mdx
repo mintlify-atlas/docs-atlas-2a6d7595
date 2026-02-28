@@ -1,0 +1,436 @@
+---
+title: 'State Management'
+description: 'Update prompts, images, and parameters during real-time sessions'
+---
+
+## Overview
+
+Once connected, you can dynamically update the transformation parameters without reconnecting. The Real-time API provides several methods to update state during an active session.
+
+## Updating Prompts
+
+Use `setPrompt()` to change the text prompt:
+
+```typescript
+await realtimeClient.setPrompt(
+  'cyberpunk style, neon lights, rainy night',
+  { enhance: true }
+);
+```
+
+### Method Signature
+
+```typescript
+setPrompt(
+  prompt: string,
+  options?: { enhance?: boolean }
+): Promise<void>
+```
+
+### Parameters
+
+- **prompt** (string, required) - The text prompt to apply
+- **enhance** (boolean, optional) - Whether to enhance the prompt (default: `true`)
+
+### Example with Error Handling
+
+```typescript
+try {
+  await realtimeClient.setPrompt(
+    'oil painting style, renaissance art',
+    { enhance: true }
+  );
+  console.log('Prompt updated successfully');
+} catch (error) {
+  console.error('Failed to update prompt:', error);
+}
+```
+
+## Updating Multiple Parameters
+
+Use `set()` to update prompt and/or image together:
+
+```typescript
+await realtimeClient.set({
+  prompt: 'anime style, vibrant colors',
+  enhance: true,
+  image: newReferenceImage
+});
+```
+
+### Method Signature
+
+```typescript
+set(input: {
+  prompt?: string;
+  enhance?: boolean;
+  image?: Blob | File | string | null;
+}): Promise<void>
+```
+
+### Parameters
+
+At least one of `prompt` or `image` must be provided:
+
+- **prompt** (string, optional) - New text prompt
+- **enhance** (boolean, optional) - Enable prompt enhancement (default: `true`)
+- **image** (Blob | File | string | null, optional) - Reference image to update
+
+### Update Prompt Only
+
+```typescript
+await realtimeClient.set({
+  prompt: 'watercolor painting, soft brush strokes',
+  enhance: true
+});
+```
+
+### Update Image Only
+
+```typescript
+const newImage = await fetch('/reference.jpg').then(r => r.blob());
+await realtimeClient.set({
+  image: newImage
+});
+```
+
+### Update Both
+
+```typescript
+await realtimeClient.set({
+  prompt: 'match this style exactly',
+  enhance: false,
+  image: styleReferenceBlob
+});
+```
+
+### Clear Image
+
+```typescript
+// Remove reference image
+await realtimeClient.set({
+  image: null,
+  prompt: 'continue without reference'
+});
+```
+
+## Updating Reference Images
+
+For models like `lucy_2_rt`, use `setImage()` for more control:
+
+```typescript
+await realtimeClient.setImage(
+  imageBlob,
+  {
+    prompt: 'apply this style',
+    enhance: true,
+    timeout: 30000 // 30 seconds
+  }
+);
+```
+
+### Method Signature
+
+```typescript
+setImage(
+  image: Blob | File | string | null,
+  options?: {
+    prompt?: string;
+    enhance?: boolean;
+    timeout?: number;
+  }
+): Promise<void>
+```
+
+### Parameters
+
+- **image** (Blob | File | string | null, required) - Image to set as reference
+- **prompt** (string, optional) - Optional prompt to send with the image
+- **enhance** (boolean, optional) - Whether to enhance the prompt
+- **timeout** (number, optional) - Timeout in milliseconds (default: 30000)
+
+### Image Input Types
+
+```typescript
+// From File input
+const fileInput = document.getElementById('fileInput');
+const file = fileInput.files[0];
+await realtimeClient.setImage(file);
+
+// From Blob
+const blob = await fetch('/image.jpg').then(r => r.blob());
+await realtimeClient.setImage(blob);
+
+// From Data URL
+const canvas = document.getElementById('canvas');
+const dataUrl = canvas.toDataURL('image/jpeg');
+await realtimeClient.setImage(dataUrl);
+
+// From HTTP URL
+await realtimeClient.setImage('https://example.com/reference.jpg');
+
+// Clear image
+await realtimeClient.setImage(null);
+```
+
+## Interactive Examples
+
+### Prompt Switcher
+
+```typescript
+const styles = [
+  'cyberpunk, neon lights, futuristic',
+  'oil painting, renaissance style',
+  'anime, vibrant colors, cel shaded',
+  'watercolor, soft pastel colors'
+];
+
+let currentStyle = 0;
+
+// Switch styles every 5 seconds
+setInterval(async () => {
+  currentStyle = (currentStyle + 1) % styles.length;
+  try {
+    await realtimeClient.setPrompt(styles[currentStyle]);
+    console.log('Switched to:', styles[currentStyle]);
+  } catch (error) {
+    console.error('Failed to switch style:', error);
+  }
+}, 5000);
+```
+
+### User Input Handler
+
+```typescript
+const promptInput = document.getElementById('prompt-input');
+const updateButton = document.getElementById('update-button');
+const enhanceCheckbox = document.getElementById('enhance-checkbox');
+
+updateButton.addEventListener('click', async () => {
+  const prompt = promptInput.value.trim();
+  const enhance = enhanceCheckbox.checked;
+  
+  if (!prompt) {
+    alert('Please enter a prompt');
+    return;
+  }
+  
+  updateButton.disabled = true;
+  updateButton.textContent = 'Updating...';
+  
+  try {
+    await realtimeClient.setPrompt(prompt, { enhance });
+    console.log('Prompt updated successfully');
+  } catch (error) {
+    console.error('Failed to update prompt:', error);
+    alert('Failed to update prompt: ' + error.message);
+  } finally {
+    updateButton.disabled = false;
+    updateButton.textContent = 'Update';
+  }
+});
+```
+
+### Image Upload Handler
+
+```typescript
+const imageInput = document.getElementById('image-input');
+const uploadButton = document.getElementById('upload-button');
+
+uploadButton.addEventListener('click', async () => {
+  const file = imageInput.files[0];
+  
+  if (!file) {
+    alert('Please select an image');
+    return;
+  }
+  
+  uploadButton.disabled = true;
+  uploadButton.textContent = 'Uploading...';
+  
+  try {
+    await realtimeClient.setImage(file, {
+      prompt: 'apply this style',
+      enhance: true,
+      timeout: 30000
+    });
+    console.log('Image updated successfully');
+  } catch (error) {
+    console.error('Failed to update image:', error);
+    alert('Failed to update image: ' + error.message);
+  } finally {
+    uploadButton.disabled = false;
+    uploadButton.textContent = 'Upload';
+  }
+});
+```
+
+### Real-time Slider Controls
+
+```typescript
+const intensitySlider = document.getElementById('intensity');
+const basePrompt = 'cinematic lighting';
+
+intensitySlider.addEventListener('input', async (e) => {
+  const intensity = e.target.value;
+  const intensityWords = [
+    'subtle',
+    'moderate',
+    'strong',
+    'very strong',
+    'extreme'
+  ];
+  
+  const word = intensityWords[Math.floor(intensity / 20)];
+  const prompt = `${basePrompt}, ${word} effect`;
+  
+  try {
+    await realtimeClient.setPrompt(prompt, { enhance: false });
+  } catch (error) {
+    console.error('Failed to update:', error);
+  }
+});
+```
+
+## Live Avatar Audio
+
+For the `live_avatar` model, play audio to animate the avatar:
+
+```typescript
+if (realtimeClient.playAudio) {
+  // Play audio file
+  const audioBlob = await fetch('/speech.mp3').then(r => r.blob());
+  await realtimeClient.playAudio(audioBlob);
+  
+  // Or from microphone
+  const audioStream = await navigator.mediaDevices.getUserMedia({ 
+    audio: true 
+  });
+  
+  const mediaRecorder = new MediaRecorder(audioStream);
+  const chunks = [];
+  
+  mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+  mediaRecorder.onstop = async () => {
+    const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+    await realtimeClient.playAudio(audioBlob);
+  };
+  
+  mediaRecorder.start();
+  // Record for 3 seconds
+  setTimeout(() => mediaRecorder.stop(), 3000);
+}
+```
+
+## State Update Best Practices
+
+### 1. Check Connection State
+
+```typescript
+if (!realtimeClient.isConnected()) {
+  console.warn('Cannot update: not connected');
+  return;
+}
+
+const state = realtimeClient.getConnectionState();
+if (state !== 'connected' && state !== 'generating') {
+  console.warn('Cannot update: connection is', state);
+  return;
+}
+
+await realtimeClient.setPrompt('new prompt');
+```
+
+### 2. Debounce Rapid Updates
+
+```typescript
+let updateTimeout;
+
+function schedulePromptUpdate(prompt) {
+  clearTimeout(updateTimeout);
+  updateTimeout = setTimeout(async () => {
+    try {
+      await realtimeClient.setPrompt(prompt);
+    } catch (error) {
+      console.error('Update failed:', error);
+    }
+  }, 500); // Wait 500ms after last change
+}
+
+// User types in input
+promptInput.addEventListener('input', (e) => {
+  schedulePromptUpdate(e.target.value);
+});
+```
+
+### 3. Handle Errors Gracefully
+
+```typescript
+async function updatePromptSafely(prompt) {
+  try {
+    await realtimeClient.setPrompt(prompt);
+    return { success: true };
+  } catch (error) {
+    console.error('Prompt update failed:', error);
+    
+    // Check if we're still connected
+    if (!realtimeClient.isConnected()) {
+      return { 
+        success: false, 
+        error: 'Connection lost. Please reconnect.' 
+      };
+    }
+    
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
+}
+```
+
+### 4. Validate Input
+
+```typescript
+async function updatePrompt(prompt) {
+  // Validate prompt
+  if (!prompt || prompt.trim().length === 0) {
+    throw new Error('Prompt cannot be empty');
+  }
+  
+  if (prompt.length > 500) {
+    throw new Error('Prompt is too long (max 500 characters)');
+  }
+  
+  await realtimeClient.setPrompt(prompt.trim());
+}
+```
+
+## Timeout Handling
+
+All update methods have timeouts to prevent hanging:
+
+```typescript
+try {
+  // setPrompt has 15 second timeout
+  await realtimeClient.setPrompt('new prompt');
+} catch (error) {
+  if (error.message.includes('timed out')) {
+    console.error('Update timed out - server may be overloaded');
+  }
+}
+
+try {
+  // set() and setImage() have 30 second timeout by default
+  await realtimeClient.setImage(image, { timeout: 60000 }); // Custom timeout
+} catch (error) {
+  if (error.message.includes('timed out')) {
+    console.error('Image update timed out');
+  }
+}
+```
+
+## Next Steps
+
+- [Events & Diagnostics](/realtime/events) - Monitor state changes and handle errors
+- [Connection Management](/realtime/connection) - Connection lifecycle and error handling

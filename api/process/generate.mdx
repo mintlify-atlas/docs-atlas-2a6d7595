@@ -1,0 +1,224 @@
+---
+title: "client.process()"
+description: "Generate images synchronously using text-to-image or image-to-image models"
+---
+
+## Overview
+
+The `process()` method generates images synchronously and returns the result as a `Blob`. This method is available for image models only (`lucy-pro-t2i` and `lucy-pro-i2i`).
+
+## Method Signature
+
+```typescript
+client.process<T extends ImageModelDefinition>(
+  options: ProcessOptions<T>
+): Promise<Blob>
+```
+
+## Parameters
+
+<ParamField path="model" type="ImageModelDefinition" required>
+  The image model definition to use for generation.
+  
+  Available models:
+  - `models.image("lucy-pro-t2i")` - Text-to-image generation
+  - `models.image("lucy-pro-i2i")` - Image-to-image editing
+</ParamField>
+
+<ParamField path="prompt" type="string" required>
+  Text description for the generation or editing.
+  
+  - Maximum length: 1000 characters
+  - For text-to-image: Describe what you want to generate
+  - For image-to-image: Describe the changes to apply
+  
+  See the [Prompt Engineering](https://docs.platform.decart.ai/models/image/image-generation#prompt-engineering) guide for best practices.
+</ParamField>
+
+<ParamField path="data" type="FileInput">
+  Required for image-to-image (`lucy-pro-i2i`) only. The source image to edit.
+  
+  Accepted types:
+  - `File` - Browser File object
+  - `Blob` - Binary data
+  - `ReadableStream` - Stream of data
+  - `URL` - URL object
+  - `string` - URL string
+  - `ReactNativeFile` - React Native file format
+</ParamField>
+
+<ParamField path="seed" type="number">
+  Random seed for reproducible results.
+  
+  Using the same seed with identical prompt and settings produces the same output every time. Useful for testing and debugging.
+</ParamField>
+
+<ParamField path="resolution" type="'480p' | '720p'" default="720p">
+  Output resolution for the generated image.
+</ParamField>
+
+<ParamField path="orientation" type="'landscape' | 'portrait'" default="landscape">
+  Output orientation for the generated image.
+</ParamField>
+
+<ParamField path="enhance_prompt" type="boolean" default="true">
+  Whether to enhance the prompt automatically.
+  
+  For best results, keep this enabled to let Decart's AI enhance your prompts. Only disable if you need exact prompt control.
+  
+  Available for `lucy-pro-i2i` only.
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal">
+  Optional AbortSignal for canceling the request.
+  
+  ```typescript
+  const controller = new AbortController();
+  client.process({ model, prompt, signal: controller.signal });
+  // Later: controller.abort();
+  ```
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="Promise<Blob>">
+  Returns a Promise that resolves to a `Blob` containing the generated image data.
+  
+  The Blob can be:
+  - Converted to a URL using `URL.createObjectURL(blob)`
+  - Downloaded as a file
+  - Sent to a server
+  - Displayed in an `<img>` element
+</ResponseField>
+
+## Examples
+
+### Text-to-Image Generation
+
+Generate an image from a text prompt:
+
+```typescript
+import { createDecartClient, models } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const blob = await client.process({
+  model: models.image("lucy-pro-t2i"),
+  prompt: "A serene mountain landscape at sunset with vibrant colors",
+  resolution: "720p",
+  orientation: "landscape",
+  seed: 42, // Optional: for reproducible results
+});
+
+// Use the generated image
+const imageUrl = URL.createObjectURL(blob);
+document.getElementById("output").src = imageUrl;
+```
+
+### Image-to-Image Editing
+
+Edit an existing image using a text prompt:
+
+```typescript
+import { createDecartClient, models } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Load an image file
+const fileInput = document.getElementById("imageInput");
+const sourceImage = fileInput.files[0];
+
+const blob = await client.process({
+  model: models.image("lucy-pro-i2i"),
+  prompt: "Add autumn foliage and warm lighting",
+  data: sourceImage,
+  resolution: "720p",
+  enhance_prompt: true,
+});
+
+// Display the edited image
+const imageUrl = URL.createObjectURL(blob);
+document.getElementById("output").src = imageUrl;
+```
+
+### With Cancellation
+
+Cancel a long-running generation:
+
+```typescript
+const controller = new AbortController();
+
+try {
+  const blob = await client.process({
+    model: models.image("lucy-pro-t2i"),
+    prompt: "Complex detailed cityscape",
+    signal: controller.signal,
+  });
+  
+  // Use the result
+  const url = URL.createObjectURL(blob);
+} catch (error) {
+  if (error.name === "AbortError") {
+    console.log("Generation cancelled");
+  }
+}
+
+// Cancel from another function/event
+button.onclick = () => controller.abort();
+```
+
+### Using with URLs
+
+Edit an image from a URL:
+
+```typescript
+const blob = await client.process({
+  model: models.image("lucy-pro-i2i"),
+  prompt: "Convert to black and white with high contrast",
+  data: "https://example.com/image.jpg",
+  resolution: "720p",
+});
+```
+
+## Error Handling
+
+The method throws errors in the following cases:
+
+- **Invalid inputs**: When parameters don't match the model's input schema
+- **Network errors**: When the API request fails
+- **Authentication errors**: When the API key is invalid
+- **Abort errors**: When the request is cancelled via AbortSignal
+
+```typescript
+try {
+  const blob = await client.process({
+    model: models.image("lucy-pro-t2i"),
+    prompt: "Beautiful landscape",
+  });
+} catch (error) {
+  if (error.code === "INVALID_INPUT") {
+    console.error("Invalid parameters:", error.message);
+  } else if (error.code === "AUTHENTICATION_ERROR") {
+    console.error("Invalid API key");
+  } else {
+    console.error("Generation failed:", error);
+  }
+}
+```
+
+## Notes
+
+- Only image models (`lucy-pro-t2i` and `lucy-pro-i2i`) support synchronous processing
+- For video generation, use the [queue API](/api/queue/submit) instead
+- Maximum prompt length is 1000 characters
+- The method validates inputs against the model's schema before sending the request
+- File inputs are automatically converted to the appropriate format
+
+## Related Methods
+
+- [client.queue.submit()](/api/queue/submit) - For asynchronous video generation
+- [client.tokens.create()](/api/tokens/create) - For creating client-side API tokens

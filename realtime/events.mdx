@@ -1,0 +1,572 @@
+---
+title: 'Events & Diagnostics'
+description: 'Monitor connection state, handle errors, and track performance'
+---
+
+## Overview
+
+The Real-time API provides comprehensive event monitoring to track connection health, errors, generation progress, and detailed diagnostics.
+
+## Event Types
+
+The `RealTimeClient` emits the following events:
+
+```typescript
+interface Events {
+  connectionChange: ConnectionState;
+  error: DecartSDKError;
+  generationTick: { seconds: number };
+  diagnostic: DiagnosticEvent;
+  stats: WebRTCStats;
+}
+```
+
+## Connection State Events
+
+Track connection lifecycle changes:
+
+```typescript
+realtimeClient.on('connectionChange', (state: ConnectionState) => {
+  console.log('Connection state changed to:', state);
+});
+```
+
+### Connection States
+
+- **connecting** - Establishing WebRTC connection
+- **connected** - Connected and ready to stream
+- **generating** - Currently processing/transforming video
+- **reconnecting** - Attempting to reconnect after disruption
+- **disconnected** - Connection closed
+
+### Example Handler
+
+```typescript
+realtimeClient.on('connectionChange', (state) => {
+  const statusElement = document.getElementById('status');
+  
+  switch (state) {
+    case 'connecting':
+      statusElement.textContent = 'Connecting...';
+      statusElement.className = 'status-connecting';
+      break;
+      
+    case 'connected':
+      statusElement.textContent = 'Connected';
+      statusElement.className = 'status-connected';
+      break;
+      
+    case 'generating':
+      statusElement.textContent = 'Generating...';
+      statusElement.className = 'status-generating';
+      break;
+      
+    case 'reconnecting':
+      statusElement.textContent = 'Reconnecting...';
+      statusElement.className = 'status-reconnecting';
+      break;
+      
+    case 'disconnected':
+      statusElement.textContent = 'Disconnected';
+      statusElement.className = 'status-disconnected';
+      break;
+  }
+});
+```
+
+## Error Events
+
+Handle errors during real-time sessions:
+
+```typescript
+realtimeClient.on('error', (error: DecartSDKError) => {
+  console.error('Error occurred:', error.code, error.message);
+});
+```
+
+### Error Object
+
+```typescript
+interface DecartSDKError {
+  code: string;
+  message: string;
+  details?: any;
+}
+```
+
+### Common Error Codes
+
+- **WEBRTC_CONNECTION_FAILED** - WebRTC connection establishment failed
+- **WEBRTC_ICE_FAILED** - ICE connection failed
+- **WEBRTC_NEGOTIATION_FAILED** - SDP negotiation failed
+- **WEBSOCKET_ERROR** - WebSocket connection error
+- **TIMEOUT** - Operation timed out
+
+### Error Handler Example
+
+```typescript
+realtimeClient.on('error', (error) => {
+  console.error('Real-time error:', error.code, error.message);
+  
+  switch (error.code) {
+    case 'WEBRTC_CONNECTION_FAILED':
+      showNotification('Connection failed. Please check your network.');
+      break;
+      
+    case 'WEBRTC_ICE_FAILED':
+      showNotification('Unable to establish peer connection. Firewall may be blocking.');
+      break;
+      
+    case 'TIMEOUT':
+      showNotification('Operation timed out. Server may be overloaded.');
+      break;
+      
+    default:
+      showNotification(`Error: ${error.message}`);
+  }
+});
+```
+
+## Generation Tick Events
+
+Track generation progress in seconds:
+
+```typescript
+realtimeClient.on('generationTick', ({ seconds }) => {
+  console.log('Generated for:', seconds, 'seconds');
+});
+```
+
+### Example: Usage Tracker
+
+```typescript
+let totalGenerationTime = 0;
+
+realtimeClient.on('generationTick', ({ seconds }) => {
+  totalGenerationTime = seconds;
+  
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  
+  document.getElementById('usage').textContent = 
+    `Generated: ${minutes}m ${secs}s`;
+});
+```
+
+## Diagnostic Events
+
+Receive detailed diagnostic information:
+
+```typescript
+realtimeClient.on('diagnostic', (event: DiagnosticEvent) => {
+  console.log('Diagnostic:', event.name, event.data);
+});
+```
+
+### Diagnostic Event Types
+
+#### Phase Timing
+
+Tracks timing for each connection phase:
+
+```typescript
+interface PhaseTimingEvent {
+  phase: 'websocket' | 'avatar-image' | 'initial-prompt' | 'webrtc-handshake' | 'total';
+  durationMs: number;
+  success: boolean;
+  error?: string;
+}
+```
+
+**Example:**
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'phaseTiming') {
+    console.log(`${event.data.phase}: ${event.data.durationMs}ms`);
+    if (!event.data.success) {
+      console.error(`Phase failed: ${event.data.error}`);
+    }
+  }
+});
+```
+
+#### ICE Candidates
+
+Tracks ICE candidate gathering:
+
+```typescript
+interface IceCandidateEvent {
+  source: 'local' | 'remote';
+  candidateType: 'host' | 'srflx' | 'prflx' | 'relay' | 'unknown';
+  protocol: 'udp' | 'tcp' | 'unknown';
+  address?: string;
+  port?: number;
+}
+```
+
+**Example:**
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'iceCandidate') {
+    console.log(
+      `${event.data.source} ICE candidate:`,
+      event.data.candidateType,
+      event.data.protocol
+    );
+  }
+});
+```
+
+#### ICE State Changes
+
+```typescript
+interface IceStateEvent {
+  state: string;
+  previousState: string;
+  timestampMs: number;
+}
+```
+
+**Example:**
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'iceStateChange') {
+    console.log(
+      `ICE state: ${event.data.previousState} -> ${event.data.state}`
+    );
+  }
+});
+```
+
+#### Peer Connection State
+
+```typescript
+interface PeerConnectionStateEvent {
+  state: string;
+  previousState: string;
+  timestampMs: number;
+}
+```
+
+**Example:**
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'peerConnectionStateChange') {
+    console.log(
+      `Peer connection: ${event.data.previousState} -> ${event.data.state}`
+    );
+  }
+});
+```
+
+#### Signaling State
+
+```typescript
+interface SignalingStateEvent {
+  state: string;
+  previousState: string;
+  timestampMs: number;
+}
+```
+
+#### Selected Candidate Pair
+
+Shows which ICE candidate pair was selected:
+
+```typescript
+interface SelectedCandidatePairEvent {
+  local: {
+    candidateType: string;
+    protocol: string;
+    address?: string;
+    port?: number;
+  };
+  remote: {
+    candidateType: string;
+    protocol: string;
+    address?: string;
+    port?: number;
+  };
+}
+```
+
+**Example:**
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'selectedCandidatePair') {
+    console.log('Using connection:', 
+      `Local: ${event.data.local.candidateType} (${event.data.local.protocol})`,
+      `Remote: ${event.data.remote.candidateType} (${event.data.remote.protocol})`
+    );
+  }
+});
+```
+
+#### Reconnection Events
+
+```typescript
+interface ReconnectEvent {
+  attempt: number;
+  maxAttempts: number;
+  durationMs: number;
+  success: boolean;
+  error?: string;
+}
+```
+
+**Example:**
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'reconnect') {
+    if (event.data.success) {
+      console.log(`Reconnected after ${event.data.durationMs}ms`);
+    } else {
+      console.error(
+        `Reconnect attempt ${event.data.attempt}/${event.data.maxAttempts} failed:`,
+        event.data.error
+      );
+    }
+  }
+});
+```
+
+#### Video Stall Detection
+
+Detects when video playback stalls (FPS < 0.5):
+
+```typescript
+interface VideoStallEvent {
+  stalled: boolean; // true when stall detected, false when recovered
+  durationMs: number; // 0 on detection, actual duration on recovery
+}
+```
+
+**Example:**
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'videoStall') {
+    if (event.data.stalled) {
+      console.warn('Video stalled!');
+      showWarning('Video playback stalled');
+    } else {
+      console.log(`Video recovered after ${event.data.durationMs}ms`);
+      hideWarning();
+    }
+  }
+});
+```
+
+## WebRTC Statistics
+
+Receive real-time WebRTC performance statistics:
+
+```typescript
+realtimeClient.on('stats', (stats: WebRTCStats) => {
+  console.log('WebRTC stats:', stats);
+});
+```
+
+### Stats Structure
+
+```typescript
+interface WebRTCStats {
+  video?: {
+    framesPerSecond: number;
+    frameWidth: number;
+    frameHeight: number;
+    bytesReceived: number;
+    packetsReceived: number;
+    packetsLost: number;
+    jitter: number;
+  };
+  audio?: {
+    bytesReceived: number;
+    packetsReceived: number;
+    packetsLost: number;
+    jitter: number;
+  };
+  connection?: {
+    currentRoundTripTime: number;
+    availableOutgoingBitrate: number;
+  };
+}
+```
+
+### Example: Performance Monitor
+
+```typescript
+realtimeClient.on('stats', (stats) => {
+  if (stats.video) {
+    document.getElementById('fps').textContent = 
+      `${stats.video.framesPerSecond.toFixed(1)} FPS`;
+    
+    document.getElementById('resolution').textContent = 
+      `${stats.video.frameWidth}x${stats.video.frameHeight}`;
+    
+    const packetLoss = 
+      (stats.video.packetsLost / stats.video.packetsReceived) * 100;
+    document.getElementById('packet-loss').textContent = 
+      `${packetLoss.toFixed(2)}%`;
+  }
+  
+  if (stats.connection) {
+    document.getElementById('rtt').textContent = 
+      `${(stats.connection.currentRoundTripTime * 1000).toFixed(0)}ms`;
+  }
+});
+```
+
+## Event Listener Management
+
+### Adding Listeners
+
+```typescript
+const handleError = (error) => {
+  console.error('Error:', error);
+};
+
+realtimeClient.on('error', handleError);
+```
+
+### Removing Listeners
+
+```typescript
+realtimeClient.off('error', handleError);
+```
+
+### One-time Listeners
+
+```typescript
+function handleFirstConnection(state) {
+  if (state === 'connected') {
+    console.log('First connection established!');
+    realtimeClient.off('connectionChange', handleFirstConnection);
+  }
+}
+
+realtimeClient.on('connectionChange', handleFirstConnection);
+```
+
+## Complete Monitoring Example
+
+```typescript
+import { createDecartClient } from '@decart-sdk/client';
+
+const client = createDecartClient({ apiKey: 'your-api-key' });
+
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: { width: 1280, height: 720 }
+});
+
+const realtimeClient = await client.realtime.connect(stream, {
+  model: client.models.realtime('mirage_v2'),
+  onRemoteStream: (remoteStream) => {
+    document.getElementById('output').srcObject = remoteStream;
+  }
+});
+
+// Monitor connection state
+realtimeClient.on('connectionChange', (state) => {
+  console.log('State:', state);
+  document.getElementById('status').textContent = state;
+});
+
+// Handle errors
+realtimeClient.on('error', (error) => {
+  console.error('Error:', error.code, error.message);
+  alert(`Error: ${error.message}`);
+});
+
+// Track generation time
+let generationTime = 0;
+realtimeClient.on('generationTick', ({ seconds }) => {
+  generationTime = seconds;
+  document.getElementById('time').textContent = `${seconds}s`;
+});
+
+// Log diagnostics
+realtimeClient.on('diagnostic', (event) => {
+  console.log(`[${event.name}]`, event.data);
+  
+  // Special handling for video stalls
+  if (event.name === 'videoStall' && event.data.stalled) {
+    showWarning('Video playback stalled');
+  }
+});
+
+// Monitor performance
+realtimeClient.on('stats', (stats) => {
+  if (stats.video) {
+    document.getElementById('fps').textContent = 
+      `${stats.video.framesPerSecond.toFixed(1)} FPS`;
+  }
+});
+
+// Cleanup on disconnect
+window.addEventListener('beforeunload', () => {
+  realtimeClient.disconnect();
+  stream.getTracks().forEach(track => track.stop());
+});
+```
+
+## Debugging Tips
+
+### Enable Verbose Logging
+
+```typescript
+realtimeClient.on('diagnostic', (event) => {
+  console.log(`[DIAGNOSTIC] ${event.name}:`, event.data);
+});
+```
+
+### Track Connection Timeline
+
+```typescript
+const connectionTimeline = [];
+
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'phaseTiming') {
+    connectionTimeline.push({
+      phase: event.data.phase,
+      duration: event.data.durationMs,
+      success: event.data.success
+    });
+    
+    console.table(connectionTimeline);
+  }
+});
+```
+
+### Monitor Network Quality
+
+```typescript
+let consecutiveStalls = 0;
+
+realtimeClient.on('diagnostic', (event) => {
+  if (event.name === 'videoStall') {
+    if (event.data.stalled) {
+      consecutiveStalls++;
+      if (consecutiveStalls > 3) {
+        alert('Poor network quality detected');
+      }
+    } else {
+      consecutiveStalls = 0;
+    }
+  }
+});
+
+realtimeClient.on('stats', (stats) => {
+  if (stats.video) {
+    const lossRate = stats.video.packetsLost / stats.video.packetsReceived;
+    if (lossRate > 0.05) { // 5% loss
+      console.warn('High packet loss detected:', lossRate);
+    }
+  }
+});
+```
+
+## Next Steps
+
+- [Overview](/realtime/overview) - Learn about the Real-time API
+- [Connection Management](/realtime/connection) - Connection and disconnection
+- [State Management](/realtime/state-management) - Update prompts and parameters

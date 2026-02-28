@@ -1,0 +1,365 @@
+---
+title: "Synchronous Image Generation"
+description: "Use the Process API to generate images synchronously with text-to-image and image-to-image models"
+---
+
+The Process API provides synchronous image generation through the `client.process()` method. This guide covers how to use both text-to-image and image-to-image models.
+
+## Method Signature
+
+The `process()` method accepts a single options object with type-safe parameters based on the model:
+
+```typescript
+type ProcessClient = <T extends ImageModelDefinition>(
+  options: ProcessOptions<T>
+) => Promise<Blob>;
+```
+
+### Common Parameters
+
+All image models support these parameters:
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `model` | `ImageModelDefinition` | Yes | - | The model to use (from `models.image()`) |
+| `prompt` | `string` | Yes | - | Text description for generation (1-1000 characters) |
+| `seed` | `number` | No | Random | Random seed for reproducible results |
+| `resolution` | `"480p" \| "720p"` | No | `"720p"` | Output resolution |
+| `orientation` | `"landscape" \| "portrait"` | No | `"landscape"` | Output orientation (t2i only) |
+| `enhance_prompt` | `boolean` | No | `true` | Whether to enhance the prompt (i2i only) |
+| `signal` | `AbortSignal` | No | - | Optional abort signal for cancellation |
+
+## Text-to-Image (lucy-pro-t2i)
+
+Generate images from text descriptions using the `lucy-pro-t2i` model.
+
+### Basic Example
+
+```typescript
+import { createDecartClient, models } from '@decartai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const imageBlob = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'A serene Japanese garden with cherry blossoms and a wooden bridge',
+  seed: 222,
+  orientation: 'landscape',
+});
+
+// Save the image
+const buffer = Buffer.from(await imageBlob.arrayBuffer());
+fs.writeFileSync('garden.png', buffer);
+```
+
+### Portrait Orientation
+
+```typescript
+const portraitImage = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'Portrait of a wise elderly wizard with flowing robes',
+  orientation: 'portrait',
+  resolution: '720p',
+});
+```
+
+### Reproducible Generation
+
+Use the same seed to generate identical images:
+
+```typescript
+const seed = 42;
+
+// These will produce the same image
+const image1 = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'Sunset over the ocean',
+  seed,
+});
+
+const image2 = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'Sunset over the ocean',
+  seed, // Same seed = same result
+});
+```
+
+## Image-to-Image (lucy-pro-i2i)
+
+Transform existing images using the `lucy-pro-i2i` model.
+
+### Basic Example
+
+```typescript
+import { readFileSync } from 'fs';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Load the input image
+const imageBuffer = readFileSync('input.png');
+const imageBlob = new Blob([imageBuffer], { type: 'image/png' });
+
+const result = await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'Oil painting in the style of Van Gogh',
+  data: imageBlob,
+  seed: 333,
+  enhance_prompt: false,
+});
+
+// Save the transformed image
+const buffer = Buffer.from(await result.arrayBuffer());
+fs.writeFileSync('van-gogh-style.png', buffer);
+```
+
+### Image-to-Image Parameters
+
+The `lucy-pro-i2i` model includes an additional parameter:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `data` | `FileInput` | Yes | The source image to transform |
+
+### Supported Input Types
+
+The `data` parameter accepts various input types:
+
+```typescript
+// File object (browser)
+const fileInput = document.querySelector('input[type="file"]').files[0];
+await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'Watercolor painting style',
+  data: fileInput,
+});
+
+// Blob
+const blob = new Blob([imageBuffer], { type: 'image/png' });
+await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'Cyberpunk neon style',
+  data: blob,
+});
+
+// URL string
+await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'Anime art style',
+  data: 'https://example.com/image.png',
+});
+
+// URL object
+await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'Pixel art style',
+  data: new URL('https://example.com/image.png'),
+});
+
+// React Native file format
+await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'Sketch drawing style',
+  data: {
+    uri: 'file:///path/to/image.png',
+    type: 'image/png',
+    name: 'image.png',
+  },
+});
+```
+
+### Prompt Enhancement
+
+The `enhance_prompt` parameter improves generation quality:
+
+```typescript
+// With prompt enhancement (default)
+const enhanced = await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'sunny day',
+  data: imageBlob,
+  enhance_prompt: true, // AI enhances the prompt
+});
+
+// Without prompt enhancement (exact control)
+const exact = await client.process({
+  model: models.image('lucy-pro-i2i'),
+  prompt: 'sunny day',
+  data: imageBlob,
+  enhance_prompt: false, // Use exact prompt
+});
+```
+
+<Note>
+For best results, keep `enhance_prompt` set to `true` (default) to let Decart's AI enhance your prompts. Only disable it if you need exact prompt control.
+</Note>
+
+## Handling the Response
+
+The `process()` method returns a `Promise<Blob>` containing the generated image.
+
+### Save to File (Node.js)
+
+```typescript
+import { writeFileSync } from 'fs';
+
+const imageBlob = await client.process({ /* ... */ });
+const buffer = Buffer.from(await imageBlob.arrayBuffer());
+writeFileSync('output.png', buffer);
+```
+
+### Display in Browser
+
+```typescript
+const imageBlob = await client.process({ /* ... */ });
+const imageUrl = URL.createObjectURL(imageBlob);
+
+const imgElement = document.createElement('img');
+imgElement.src = imageUrl;
+document.body.appendChild(imgElement);
+
+// Clean up when done
+URL.revokeObjectURL(imageUrl);
+```
+
+### Convert to Base64
+
+```typescript
+const imageBlob = await client.process({ /* ... */ });
+const buffer = await imageBlob.arrayBuffer();
+const base64 = Buffer.from(buffer).toString('base64');
+const dataUrl = `data:image/png;base64,${base64}`;
+```
+
+### Send via HTTP Response (Express)
+
+```typescript
+import express from 'express';
+
+const app = express();
+
+app.get('/generate', async (req, res) => {
+  const imageBlob = await client.process({
+    model: models.image('lucy-pro-t2i'),
+    prompt: req.query.prompt as string,
+  });
+
+  const buffer = Buffer.from(await imageBlob.arrayBuffer());
+  res.set('Content-Type', 'image/png');
+  res.send(buffer);
+});
+```
+
+## Request Cancellation
+
+Use an `AbortSignal` to cancel in-flight requests:
+
+```typescript
+const controller = new AbortController();
+
+// Start generation
+const promise = client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'Mountain landscape',
+  signal: controller.signal,
+});
+
+// Cancel after 5 seconds
+setTimeout(() => controller.abort(), 5000);
+
+try {
+  const result = await promise;
+} catch (error) {
+  if (error.name === 'AbortError') {
+    console.log('Request was cancelled');
+  }
+}
+```
+
+## Error Handling
+
+Handle errors gracefully with try-catch:
+
+```typescript
+try {
+  const imageBlob = await client.process({
+    model: models.image('lucy-pro-t2i'),
+    prompt: '', // Invalid: empty prompt
+  });
+} catch (error) {
+  if (error.code === 'INVALID_INPUT') {
+    console.error('Invalid input:', error.message);
+  } else if (error.code === 'AUTHENTICATION_ERROR') {
+    console.error('Invalid API key');
+  } else {
+    console.error('Generation failed:', error);
+  }
+}
+```
+
+## Prompt Engineering Tips
+
+<Tip>
+For effective prompts with Decart image models, check out our [Prompt Engineering Guide](https://docs.platform.decart.ai/models/image/image-generation#prompt-engineering) for text-to-image and [Prompt Engineering for Edits](https://docs.platform.decart.ai/models/image/image-editing#prompt-engineering-for-edits) for image-to-image.
+</Tip>
+
+### Best Practices
+
+1. **Be descriptive**: Include details about style, lighting, composition
+2. **Use concrete nouns**: Specific objects produce better results than abstract concepts
+3. **Specify artistic style**: Mention art styles, artists, or aesthetics
+4. **Control composition**: Include framing terms like "close-up", "wide shot", "aerial view"
+
+Example of a well-crafted prompt:
+
+```typescript
+const imageBlob = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'A majestic snow-capped mountain peak at golden hour, '
+    + 'dramatic clouds, cinematic lighting, wide angle view, '
+    + 'professional landscape photography style',
+  resolution: '720p',
+});
+```
+
+## TypeScript Types
+
+The Process API is fully type-safe. Here are the key types:
+
+```typescript
+import type { ProcessOptions, ImageModelDefinition } from '@decartai/sdk';
+
+// Process options are specific to each model
+type T2IOptions = ProcessOptions<ImageModelDefinition<'lucy-pro-t2i'>>;
+type I2IOptions = ProcessOptions<ImageModelDefinition<'lucy-pro-i2i'>>;
+
+// FileInput accepts multiple types
+type FileInput = 
+  | File 
+  | Blob 
+  | ReadableStream 
+  | URL 
+  | string 
+  | ReactNativeFile;
+
+// React Native file format
+interface ReactNativeFile {
+  uri: string;
+  type: string;
+  name: string;
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Queue API" href="/queue/overview" icon="clock">
+    Learn about asynchronous video generation
+  </Card>
+  <Card title="Real-time API" href="/realtime/overview" icon="video">
+    Explore real-time video streaming
+  </Card>
+</CardGroup>

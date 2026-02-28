@@ -1,0 +1,363 @@
+---
+title: Hono Edge API
+description: Deploy a serverless edge API with Hono and Cloudflare Workers
+---
+
+This example demonstrates how to build a serverless edge API using Hono and Cloudflare Workers with the Decart SDK. Perfect for deploying globally distributed, low-latency AI image and video generation.
+
+## What You'll Build
+
+A Cloudflare Workers API with:
+- Text-to-image generation
+- Video generation job management
+- Hono's lightweight routing
+- TypeScript support
+- Global edge deployment
+
+## Prerequisites
+
+- Node.js 18 or higher
+- A Cloudflare account
+- A Decart API key
+- Wrangler CLI
+
+## Setup
+
+<Steps>
+  <Step title="Clone and navigate to the example">
+    ```bash
+    git clone https://github.com/decartai/sdk
+    cd sdk/examples/hono-edge
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    From the repository root:
+    ```bash
+    cd ../..
+    pnpm install
+    pnpm build
+    ```
+  </Step>
+
+  <Step title="Configure your API key for local development">
+    Create a `.dev.vars` file:
+    ```bash
+    cd examples/hono-edge
+    echo "DECART_API_KEY=your-api-key-here" > .dev.vars
+    ```
+  </Step>
+
+  <Step title="Start local development server">
+    ```bash
+    pnpm dev
+    ```
+    Server runs at [http://localhost:8787](http://localhost:8787)
+  </Step>
+</Steps>
+
+## Complete Application Code
+
+```typescript
+import { createDecartClient, type DecartClient, models } from "@decartai/sdk";
+import { Hono } from "hono";
+
+type Bindings = {
+  DECART_API_KEY: string;
+};
+
+type Variables = {
+  decart: DecartClient;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+// Middleware to create and share the Decart client
+app.use("*", async (c, next) => {
+  const client = createDecartClient({
+    apiKey: c.env.DECART_API_KEY,
+  });
+  c.set("decart", client);
+  await next();
+});
+
+// Text-to-image generation
+app.post("/api/image/generate", async (c) => {
+  const client = c.get("decart");
+  const { prompt } = await c.req.json<{ prompt: string }>();
+
+  const blob = await client.process({
+    model: models.image("lucy-pro-t2i"),
+    prompt,
+  });
+
+  return new Response(blob, {
+    headers: { "Content-Type": "image/png" },
+  });
+});
+
+// Submit video generation job (async)
+app.post("/api/video/generate", async (c) => {
+  const client = c.get("decart");
+  const { prompt } = await c.req.json<{ prompt: string }>();
+
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt,
+  });
+
+  return c.json({ jobId: job.job_id, status: job.status });
+});
+
+// Check video job status
+app.get("/api/video/status/:jobId", async (c) => {
+  const client = c.get("decart");
+  const jobId = c.req.param("jobId");
+  const status = await client.queue.status(jobId);
+
+  return c.json(status);
+});
+
+// Get video result
+app.get("/api/video/result/:jobId", async (c) => {
+  const client = c.get("decart");
+  const jobId = c.req.param("jobId");
+  const blob = await client.queue.result(jobId);
+
+  return new Response(blob, {
+    headers: { "Content-Type": "video/mp4" },
+  });
+});
+
+export default app;
+```
+
+## Deployment
+
+<Steps>
+  <Step title="Set your API key as a secret">
+    ```bash
+    npx wrangler secret put DECART_API_KEY
+    ```
+    Enter your API key when prompted.
+  </Step>
+
+  <Step title="Deploy to Cloudflare Workers">
+    ```bash
+    pnpm deploy
+    ```
+  </Step>
+
+  <Step title="Test your deployment">
+    Your API will be available at `https://your-worker.workers.dev`
+  </Step>
+</Steps>
+
+## API Usage
+
+### Generate Image
+
+```bash
+curl -X POST https://your-worker.workers.dev/api/image/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A beautiful sunset over mountains"}' \
+  --output image.png
+```
+
+### Generate Video (Async)
+
+Submit job:
+```bash
+curl -X POST https://your-worker.workers.dev/api/video/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A cat playing piano"}'
+```
+
+Check status:
+```bash
+curl https://your-worker.workers.dev/api/video/status/abc123
+```
+
+Get result:
+```bash
+curl https://your-worker.workers.dev/api/video/result/abc123 --output video.mp4
+```
+
+## Key Concepts
+
+### Hono Middleware
+
+The middleware pattern creates a shared Decart client:
+
+```typescript
+app.use("*", async (c, next) => {
+  const client = createDecartClient({
+    apiKey: c.env.DECART_API_KEY,
+  });
+  c.set("decart", client);
+  await next();
+});
+```
+
+This ensures every request has access to the client via `c.get("decart")`.
+
+### TypeScript Types
+
+Define types for environment bindings and context variables:
+
+```typescript
+type Bindings = {
+  DECART_API_KEY: string;
+};
+
+type Variables = {
+  decart: DecartClient;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+```
+
+### Environment Variables
+
+Access secrets via `c.env`:
+
+```typescript
+const apiKey = c.env.DECART_API_KEY;
+```
+
+### Request/Response Handling
+
+Hono provides clean request parsing and response building:
+
+```typescript
+// Parse JSON body
+const { prompt } = await c.req.json<{ prompt: string }>();
+
+// Get route parameters
+const jobId = c.req.param("jobId");
+
+// Return JSON
+return c.json({ jobId: "abc", status: "pending" });
+
+// Return binary response
+return new Response(blob, {
+  headers: { "Content-Type": "image/png" },
+});
+```
+
+## Edge Benefits
+
+### Global Distribution
+
+Cloudflare Workers run in 300+ locations worldwide, providing low latency for users anywhere.
+
+### Zero Cold Starts
+
+Workers have near-instant cold starts compared to traditional serverless functions.
+
+### Cost Efficient
+
+Pay only for requests, with generous free tier:
+- 100,000 requests/day free
+- $0.50 per million requests after
+
+### Automatic Scaling
+
+Handles traffic spikes without configuration.
+
+## Wrangler Configuration
+
+The `wrangler.toml` file configures your worker:
+
+```toml
+name = "decart-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+# Non-secret environment variables go here
+```
+
+Secrets (like API keys) are set via CLI, not in `wrangler.toml`.
+
+## Local Development
+
+For local development, use `.dev.vars`:
+
+```bash
+DECART_API_KEY=your-api-key-here
+```
+
+This file is gitignored and only used locally.
+
+## Error Handling
+
+Add error handling for production:
+
+```typescript
+app.post("/api/image/generate", async (c) => {
+  try {
+    const client = c.get("decart");
+    const { prompt } = await c.req.json();
+
+    const blob = await client.process({
+      model: models.image("lucy-pro-t2i"),
+      prompt,
+    });
+
+    return new Response(blob, {
+      headers: { "Content-Type": "image/png" },
+    });
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      500
+    );
+  }
+});
+```
+
+## CORS Support
+
+Enable CORS for frontend access:
+
+```typescript
+import { cors } from "hono/cors";
+
+app.use("*", cors());
+
+// Or with custom options
+app.use(
+  "*",
+  cors({
+    origin: ["https://your-frontend.com"],
+    allowMethods: ["GET", "POST"],
+  })
+);
+```
+
+## Production Best Practices
+
+1. **Use Secrets** - Always use `wrangler secret` for API keys
+2. **Add Rate Limiting** - Implement rate limiting to prevent abuse
+3. **Monitor Usage** - Use Cloudflare Analytics to track usage
+4. **Set Timeouts** - Configure appropriate timeout limits
+5. **Handle Errors** - Return meaningful error messages
+6. **Add Logging** - Use `console.log` for debugging (visible in Wrangler tail)
+
+## Monitoring
+
+View live logs:
+
+```bash
+npx wrangler tail
+```
+
+View analytics in the Cloudflare dashboard.
+
+## Related Documentation
+
+- [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
+- [Hono Documentation](https://hono.dev/)
+- [Express API Example](/examples/express-api)
+- [Client API Reference](/api/create-client)

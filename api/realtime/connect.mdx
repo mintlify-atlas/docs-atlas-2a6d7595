@@ -1,0 +1,242 @@
+---
+title: connect()
+description: Establish a WebRTC connection to start real-time streaming
+---
+
+Establishes a WebRTC connection with a real-time model and returns a RealTimeClient instance for controlling the stream.
+
+## Method Signature
+
+```typescript
+connect(
+  stream: MediaStream | null,
+  options: RealTimeClientConnectOptions
+): Promise<RealTimeClient>
+```
+
+## Parameters
+
+<ParamField path="stream" type="MediaStream | null" required>
+  The local media stream to send to the server. Pass `null` for models that don't require input (like `live_avatar` without microphone input).
+  
+  For camera/microphone input, use `navigator.mediaDevices.getUserMedia()`.
+</ParamField>
+
+<ParamField path="options" type="RealTimeClientConnectOptions" required>
+  Connection configuration options.
+  
+  <Expandable title="properties">
+    <ParamField path="model" type="ModelDefinition | CustomModelDefinition" required>
+      The real-time model to use. Access models via `models.realtime()` factory functions:
+      - `models.realtime.mirage()`
+      - `models.realtime.mirageV2()`
+      - `models.realtime.lucyV2V720pRt()`
+      - `models.realtime.lucy2Rt()`
+    </ParamField>
+    
+    <ParamField path="onRemoteStream" type="(stream: MediaStream) => void" required>
+      Callback invoked when the remote video/audio stream is available. Attach this stream to a video element to display the output.
+      
+      ```typescript
+      onRemoteStream: (stream) => {
+        videoElement.srcObject = stream;
+      }
+      ```
+    </ParamField>
+    
+    <ParamField path="initialState" type="RealTimeClientInitialState" optional>
+      Initial state to set on connection.
+      
+      <Expandable title="properties">
+        <ParamField path="prompt" type="object" optional>
+          Initial prompt to apply.
+          
+          <Expandable title="properties">
+            <ParamField path="text" type="string" required>
+              The prompt text.
+            </ParamField>
+            <ParamField path="enhance" type="boolean" optional default="true">
+              Whether to enhance the prompt using AI.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+        
+        <ParamField path="image" type="Blob | File | string" optional>
+          Initial reference image. Can be a Blob, File, data URL, or HTTP(S) URL.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+    
+    <ParamField path="customizeOffer" type="(offer: RTCSessionDescriptionInit) => Promise<void>" optional>
+      Advanced: Callback to customize the WebRTC offer before sending it to the server.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="RealTimeClient" type="Promise<RealTimeClient>">
+  A promise that resolves to a RealTimeClient instance with the following methods and properties:
+  
+  <Expandable title="methods">
+    <ResponseField name="set" type="(input: SetInput) => Promise<void>">
+      Update prompt and/or reference image. See [set()](/api/realtime/set-state).
+    </ResponseField>
+    
+    <ResponseField name="setPrompt" type="(prompt: string, options?: { enhance?: boolean }) => Promise<void>">
+      Update the prompt. See [setPrompt()](/api/realtime/set-prompt).
+    </ResponseField>
+    
+    <ResponseField name="isConnected" type="() => boolean">
+      Returns `true` if the connection is active.
+    </ResponseField>
+    
+    <ResponseField name="getConnectionState" type="() => ConnectionState">
+      Returns the current connection state: `"connecting"`, `"connected"`, `"generating"`, `"disconnected"`, or `"reconnecting"`.
+    </ResponseField>
+    
+    <ResponseField name="disconnect" type="() => void">
+      Close the connection and clean up resources. See [disconnect()](/api/realtime/disconnect).
+    </ResponseField>
+    
+    <ResponseField name="on" type="<K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void">
+      Subscribe to events. See [Events](/api/realtime/events).
+    </ResponseField>
+    
+    <ResponseField name="off" type="<K extends keyof Events>(event: K, listener: (data: Events[K]) => void) => void">
+      Unsubscribe from events. See [Events](/api/realtime/events).
+    </ResponseField>
+    
+    <ResponseField name="sessionId" type="string | null">
+      The unique session ID, available after connection. Use this for session sharing.
+    </ResponseField>
+    
+    <ResponseField name="subscribeToken" type="string | null">
+      Token for subscribing to this session from another client.
+    </ResponseField>
+    
+    <ResponseField name="setImage" type="(image: Blob | File | string | null, options?: { prompt?: string; enhance?: boolean; timeout?: number }) => Promise<void>">
+      Update the reference image. Pass `null` to clear the image.
+    </ResponseField>
+    
+    <ResponseField name="playAudio" type="(audio: Blob | File | ArrayBuffer) => Promise<void>" optional>
+      **Only available for `live_avatar` model**: Play audio through the avatar. This method is only present when using the `live_avatar` model without a user-provided stream.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Error Handling
+
+The method throws an error if:
+- Options validation fails (invalid parameters)
+- WebRTC connection fails
+- WebSocket connection fails
+- Initial image/prompt fails to send
+
+```typescript
+try {
+  const client = await decart.realtime.connect(stream, options);
+} catch (error) {
+  if (error instanceof DecartSDKError) {
+    console.error('Connection failed:', error.code, error.message);
+  }
+}
+```
+
+## Usage Examples
+
+### Basic Connection
+
+```typescript
+import { createDecartClient, models } from '@decart/sdk';
+
+const decart = createDecartClient({ apiKey: 'your-api-key' });
+
+// Get user's camera
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: true,
+  audio: false
+});
+
+// Connect to Mirage model
+const client = await decart.realtime.connect(stream, {
+  model: models.realtime.mirage(),
+  onRemoteStream: (remoteStream) => {
+    const video = document.getElementById('output');
+    video.srcObject = remoteStream;
+  }
+});
+
+console.log('Connected! Session ID:', client.sessionId);
+```
+
+### Connection with Initial State
+
+```typescript
+const client = await decart.realtime.connect(stream, {
+  model: models.realtime.lucyV2V720pRt(),
+  onRemoteStream: (remoteStream) => {
+    videoElement.srcObject = remoteStream;
+  },
+  initialState: {
+    prompt: {
+      text: 'Transform into a watercolor painting',
+      enhance: true
+    }
+  }
+});
+```
+
+### Live Avatar (No Input Stream)
+
+```typescript
+// No input stream required for live_avatar
+const client = await decart.realtime.connect(null, {
+  model: models.realtime.liveAvatar(),
+  onRemoteStream: (remoteStream) => {
+    videoElement.srcObject = remoteStream;
+  },
+  initialState: {
+    image: 'https://example.com/avatar.jpg',
+    prompt: {
+      text: 'Friendly greeting expression'
+    }
+  }
+});
+
+// Play audio through the avatar
+await client.playAudio(audioBlob);
+```
+
+### Connection with Event Listeners
+
+```typescript
+const client = await decart.realtime.connect(stream, {
+  model: models.realtime.mirage(),
+  onRemoteStream: (remoteStream) => {
+    videoElement.srcObject = remoteStream;
+  }
+});
+
+// Listen for connection state changes
+client.on('connectionChange', (state) => {
+  console.log('Connection state:', state);
+});
+
+// Listen for errors
+client.on('error', (error) => {
+  console.error('Error:', error.message);
+});
+
+// Listen for generation ticks
+client.on('generationTick', ({ seconds }) => {
+  console.log('Generating for', seconds, 'seconds');
+});
+```
+
+## See Also
+
+- [setPrompt()](/api/realtime/set-prompt) - Update the prompt
+- [set()](/api/realtime/set-state) - Update prompt and/or image
+- [disconnect()](/api/realtime/disconnect) - Close the connection
+- [Events](/api/realtime/events) - Event types and subscriptions

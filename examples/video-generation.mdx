@@ -1,0 +1,270 @@
+---
+title: Video Generation Queue
+description: Generate videos asynchronously using the Queue API
+---
+
+This example demonstrates how to generate videos from text prompts using the Decart Queue API. Video generation is asynchronous, returning immediately with a job ID that you can poll for completion.
+
+## What You'll Build
+
+A video generation workflow that:
+- Submits text-to-video generation jobs
+- Polls for job completion
+- Retrieves the generated video
+- Handles job status and errors
+
+## Prerequisites
+
+- Node.js 18 or higher
+- A Decart API key
+
+## Quick Start
+
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    npm install @decartai/sdk
+    ```
+  </Step>
+
+  <Step title="Set your API key">
+    ```bash
+    export DECART_API_KEY=your-api-key-here
+    ```
+  </Step>
+
+  <Step title="Create a video generation script">
+    Create `generate-video.js`:
+    ```javascript
+    import fs from "node:fs";
+    import { createDecartClient, models } from "@decartai/sdk";
+
+    const client = createDecartClient({
+      apiKey: process.env.DECART_API_KEY,
+    });
+
+    console.log("Generating video from text...");
+
+    const result = await client.queue.submitAndPoll({
+      model: models.video("lucy-pro-t2v"),
+      prompt: "An astronaut riding a horse on Mars, cinematic lighting",
+      onStatusChange: (job) => {
+        console.log(`Job ${job.job_id}: ${job.status}`);
+      },
+    });
+
+    if (result.status === "completed") {
+      const output = Buffer.from(await result.data.arrayBuffer());
+      fs.writeFileSync("output.mp4", output);
+      console.log("Video saved to output.mp4");
+    } else {
+      console.log("Job failed:", result.error);
+    }
+    ```
+  </Step>
+
+  <Step title="Run the script">
+    ```bash
+    node generate-video.js
+    ```
+  </Step>
+</Steps>
+
+## Automatic Polling (Recommended)
+
+The `submitAndPoll` method handles job submission and polling automatically:
+
+```javascript
+import { createDecartClient, models } from "@decartai/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A timelapse of clouds moving across the sky",
+  onStatusChange: (job) => {
+    console.log(`Status: ${job.status}`);
+  },
+});
+
+if (result.status === "completed") {
+  // result.data is a Blob containing the video
+  const buffer = Buffer.from(await result.data.arrayBuffer());
+  fs.writeFileSync("output.mp4", buffer);
+}
+```
+
+## Manual Polling
+
+For more control, you can manually poll job status:
+
+```javascript
+import { createDecartClient, models } from "@decartai/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit job
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A timelapse of a flower blooming",
+});
+
+console.log("Job ID:", job.job_id);
+console.log("Initial status:", job.status);
+
+// Poll for completion
+let status = await client.queue.status(job.job_id);
+while (status.status === "pending" || status.status === "processing") {
+  console.log(`Status: ${status.status}`);
+  await new Promise((r) => setTimeout(r, 2000)); // Wait 2 seconds
+  status = await client.queue.status(job.job_id);
+}
+
+if (status.status === "completed") {
+  // Retrieve the video
+  const blob = await client.queue.result(job.job_id);
+  const buffer = Buffer.from(await blob.arrayBuffer());
+  fs.writeFileSync("output.mp4", buffer);
+  console.log("Video saved to output.mp4");
+} else {
+  console.log("Job failed:", status.error);
+}
+```
+
+## Job Status Lifecycle
+
+Jobs progress through these states:
+
+1. **pending** - Job is queued and waiting to start
+2. **processing** - Job is actively being processed
+3. **completed** - Job finished successfully
+4. **failed** - Job encountered an error
+
+## Available Video Models
+
+You can use different video generation models:
+
+```javascript
+// Text-to-video (5-second videos)
+models.video("lucy-pro-t2v")
+
+// Image-to-video (animate a still image)
+models.video("lucy-pro-i2v")
+
+// Video-to-video (transform existing video)
+models.video("lucy-pro-v2v")
+```
+
+## Advanced Options
+
+### Custom Polling Interval
+
+```javascript
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A serene lake at sunset",
+  onStatusChange: (job) => {
+    console.log(`Status: ${job.status}`);
+  },
+});
+```
+
+### Error Handling
+
+```javascript
+try {
+  const result = await client.queue.submitAndPoll({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "A thunderstorm over the ocean",
+  });
+
+  if (result.status === "completed") {
+    // Handle success
+    const buffer = Buffer.from(await result.data.arrayBuffer());
+    fs.writeFileSync("output.mp4", buffer);
+  } else if (result.status === "failed") {
+    // Handle failure
+    console.error("Generation failed:", result.error);
+  }
+} catch (error) {
+  // Handle network or API errors
+  console.error("Request failed:", error);
+}
+```
+
+## Express API Example
+
+Here's how to integrate video generation into an Express API:
+
+```javascript
+import express from "express";
+import { createDecartClient, models } from "@decartai/sdk";
+
+const app = express();
+app.use(express.json());
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit video job
+app.post("/api/video/generate", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    const job = await client.queue.submit({
+      model: models.video("lucy-pro-t2v"),
+      prompt,
+    });
+
+    res.json({ jobId: job.job_id, status: job.status });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Check job status
+app.get("/api/video/status/:jobId", async (req, res) => {
+  try {
+    const status = await client.queue.status(req.params.jobId);
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Get video result
+app.get("/api/video/result/:jobId", async (req, res) => {
+  try {
+    const blob = await client.queue.result(req.params.jobId);
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    res.setHeader("Content-Type", "video/mp4");
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.listen(3000, () => {
+  console.log("Server running on http://localhost:3000");
+});
+```
+
+## Best Practices
+
+1. **Use `submitAndPoll` for simplicity** - It handles polling automatically
+2. **Implement timeout logic** - Set maximum wait times for long-running jobs
+3. **Store job IDs** - Save job IDs in a database for later retrieval
+4. **Handle failures gracefully** - Check for failed status and provide feedback
+5. **Rate limiting** - Be mindful of API rate limits when submitting many jobs
+
+## Related Documentation
+
+- [Queue API Reference](/api/queue/submit)
+- [Video Models](/models/video)
+- [Express API Example](/examples/express-api)
+- [Error Handling](/guides/error-handling)

@@ -1,0 +1,198 @@
+---
+title: "submit()"
+description: "Submit a job to the queue for async video processing"
+---
+
+## Method Signature
+
+```typescript
+submit<T extends VideoModelDefinition>(
+  options: QueueSubmitOptions<T>
+): Promise<JobSubmitResponse>
+```
+
+Submit a job to the queue for async processing. Returns immediately with a job ID and initial status.
+
+## Parameters
+
+<ParamField path="options" type="QueueSubmitOptions<T>" required>
+  Configuration object for the job submission
+
+  <ParamField path="model" type="VideoModelDefinition" required>
+    The video model definition to use. Access models via `models.video()`.
+    
+    Supported models:
+    - `lucy-dev-i2v` - image-to-video (Dev quality)
+    - `lucy-fast-v2v` - video-to-video (Fast quality)
+    - `lucy-pro-t2v` - text-to-video (Pro quality)
+    - `lucy-pro-i2v` - image-to-video (Pro quality)
+    - `lucy-pro-v2v` - video-to-video (Pro quality)
+    - `lucy-pro-flf2v` - first-last-frame-to-video (Pro quality)
+    - `lucy-motion` - motion-based image-to-video
+    - `lucy-restyle-v2v` - video restyling
+  </ParamField>
+
+  <ParamField path="prompt" type="string">
+    Text prompt for generation (required for text-to-video models)
+  </ParamField>
+
+  <ParamField path="data" type="FileInput">
+    Input file (image or video). Accepts:
+    - `File` object
+    - `Blob` object
+    - `ReadableStream`
+    - URL string
+    - `URL` object
+    
+    Required for image-to-video and video-to-video models.
+  </ParamField>
+
+  <ParamField path="start" type="FileInput">
+    Start frame image for first-last-frame models (`lucy-pro-flf2v`)
+  </ParamField>
+
+  <ParamField path="end" type="FileInput">
+    End frame image for first-last-frame models (`lucy-pro-flf2v`)
+  </ParamField>
+
+  <ParamField path="reference_image" type="FileInput">
+    Reference image for style or appearance guidance (model-specific)
+  </ParamField>
+
+  <ParamField path="signal" type="AbortSignal">
+    Optional `AbortSignal` for canceling the request
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Promise<JobSubmitResponse>" type="object">
+  Promise that resolves with job submission details
+
+  <ResponseField name="job_id" type="string" required>
+    Unique identifier for the submitted job. Use this ID to check status or retrieve results.
+  </ResponseField>
+
+  <ResponseField name="status" type="JobStatus" required>
+    Initial job status. One of:
+    - `"pending"` - Job is queued
+    - `"processing"` - Job is being processed
+    - `"completed"` - Job finished successfully
+    - `"failed"` - Job failed
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Text-to-Video
+
+```typescript
+import { createDecartClient, models } from "@decart-ai/decart";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano"
+});
+
+console.log(job.job_id); // "job_abc123"
+console.log(job.status); // "pending"
+```
+
+### Image-to-Video
+
+```typescript
+const file = document.querySelector('input[type="file"]').files[0];
+
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Animate this image with flowing water",
+  data: file
+});
+
+console.log(`Job submitted: ${job.job_id}`);
+```
+
+### Video-to-Video
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-v2v"),
+  prompt: "Convert to watercolor style",
+  data: "https://example.com/video.mp4"
+});
+
+console.log(`Job submitted: ${job.job_id}`);
+```
+
+### First-Last-Frame-to-Video
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-flf2v"),
+  prompt: "Smooth transition between frames",
+  start: startImageFile,
+  end: endImageFile
+});
+
+console.log(`Job submitted: ${job.job_id}`);
+```
+
+### With Cancellation
+
+```typescript
+const controller = new AbortController();
+
+try {
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "A beautiful sunset",
+    signal: controller.signal
+  });
+  
+  console.log(`Job submitted: ${job.job_id}`);
+} catch (error) {
+  if (error.name === "AbortError") {
+    console.log("Submission cancelled");
+  }
+}
+
+// Cancel the request
+controller.abort();
+```
+
+## Error Handling
+
+```typescript
+try {
+  const job = await client.queue.submit({
+    model: models.video("lucy-pro-t2v"),
+    prompt: "A cat playing piano"
+  });
+} catch (error) {
+  if (error.code === "INVALID_INPUT") {
+    console.error("Invalid model inputs:", error.message);
+  } else if (error.code === "NETWORK_ERROR") {
+    console.error("Network error:", error.message);
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+## Notes
+
+- Only video models support the queue API. For image models, use `client.process.generate()`.
+- The method returns immediately after job submission. Use `client.queue.status()` to check job progress.
+- For automatic polling until completion, use `client.queue.submitAndPoll()` instead.
+- Input validation is performed using the model's Zod schema before submission.
+- File inputs are automatically processed (URLs are downloaded, streams are converted to Blobs).
+
+## See Also
+
+- [submitAndPoll()](/api/queue/submit-and-poll) - Submit and wait for completion
+- [status()](/api/queue/status) - Check job status
+- [result()](/api/queue/result) - Retrieve job result

@@ -1,0 +1,205 @@
+---
+title: setPrompt()
+description: Update the text prompt for real-time generation
+---
+
+Updates the text prompt sent to the real-time model. This method waits for server acknowledgment before resolving.
+
+## Method Signature
+
+```typescript
+setPrompt(
+  prompt: string,
+  options?: { enhance?: boolean }
+): Promise<void>
+```
+
+## Parameters
+
+<ParamField path="prompt" type="string" required>
+  The new prompt text. Must be a non-empty string.
+  
+  The prompt describes the desired transformation or style to apply to the video stream.
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="enhance" type="boolean" optional default="true">
+      Whether to enhance the prompt using AI. When `true`, the prompt is automatically improved for better results.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="Promise<void>" type="Promise<void>">
+  A promise that resolves when the server acknowledges the prompt update, or rejects if:
+  - The connection is not active
+  - The prompt is invalid (empty string)
+  - The server rejects the prompt
+  - The operation times out (15 seconds)
+</ResponseField>
+
+## Error Handling
+
+The method throws an error if:
+- Connection is not in `"connected"` or `"generating"` state
+- Prompt validation fails (empty string)
+- Server rejects the prompt
+- Operation times out after 15 seconds
+- WebSocket is not open
+
+```typescript
+try {
+  await client.setPrompt('Transform into anime style');
+  console.log('Prompt updated successfully');
+} catch (error) {
+  console.error('Failed to update prompt:', error.message);
+}
+```
+
+## Usage Examples
+
+### Basic Prompt Update
+
+```typescript
+import { createDecartClient, models } from '@decart/sdk';
+
+const decart = createDecartClient({ apiKey: 'your-api-key' });
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+const client = await decart.realtime.connect(stream, {
+  model: models.realtime.mirage(),
+  onRemoteStream: (remoteStream) => {
+    videoElement.srcObject = remoteStream;
+  }
+});
+
+// Update the prompt
+await client.setPrompt('Transform into a watercolor painting');
+```
+
+### Disable Prompt Enhancement
+
+```typescript
+// Send the exact prompt without AI enhancement
+await client.setPrompt('cyberpunk style, neon lights', {
+  enhance: false
+});
+```
+
+### Interactive Prompt Updates
+
+```typescript
+// Update prompt based on user input
+const promptInput = document.getElementById('prompt');
+const updateButton = document.getElementById('update');
+
+updateButton.addEventListener('click', async () => {
+  const newPrompt = promptInput.value.trim();
+  
+  if (!newPrompt) {
+    alert('Please enter a prompt');
+    return;
+  }
+  
+  try {
+    updateButton.disabled = true;
+    updateButton.textContent = 'Updating...';
+    
+    await client.setPrompt(newPrompt);
+    
+    updateButton.textContent = 'Updated!';
+    setTimeout(() => {
+      updateButton.textContent = 'Update Prompt';
+      updateButton.disabled = false;
+    }, 1000);
+  } catch (error) {
+    alert('Failed to update prompt: ' + error.message);
+    updateButton.disabled = false;
+    updateButton.textContent = 'Update Prompt';
+  }
+});
+```
+
+### Prompt Presets
+
+```typescript
+const presets = {
+  anime: 'anime style, vibrant colors, hand-drawn',
+  watercolor: 'watercolor painting, soft edges, artistic',
+  cyberpunk: 'cyberpunk, neon lights, futuristic city',
+  sketch: 'pencil sketch, black and white, hand-drawn'
+};
+
+// Apply a preset
+async function applyPreset(presetName: keyof typeof presets) {
+  await client.setPrompt(presets[presetName]);
+}
+
+await applyPreset('anime');
+```
+
+### Error Handling with Retry
+
+```typescript
+async function updatePromptWithRetry(
+  prompt: string,
+  maxRetries = 3
+): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await client.setPrompt(prompt);
+      console.log('Prompt updated successfully');
+      return;
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        throw new Error(`Failed to update prompt after ${maxRetries} attempts`);
+      }
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+}
+
+await updatePromptWithRetry('Transform into oil painting');
+```
+
+### Checking Connection Before Update
+
+```typescript
+if (client.isConnected()) {
+  await client.setPrompt('New style prompt');
+} else {
+  console.error('Cannot update prompt: not connected');
+}
+```
+
+## Implementation Details
+
+### Timeout
+
+The method has a built-in timeout of **15 seconds**. If the server doesn't acknowledge the prompt within this time, the promise rejects with a timeout error.
+
+### Server Acknowledgment
+
+The method waits for a `prompt_ack` message from the server before resolving. The acknowledgment includes:
+- `success`: Whether the prompt was accepted
+- `error`: Error message if the prompt was rejected
+- `prompt`: Echo of the prompt that was sent
+
+### Connection State
+
+The method only works when the connection state is `"connected"` or `"generating"`. It throws an error in other states:
+- `"connecting"` - Wait for connection to complete
+- `"disconnected"` - Reconnect first
+- `"reconnecting"` - Wait for reconnection to complete
+
+## See Also
+
+- [set()](/api/realtime/set-state) - Update both prompt and image
+- [connect()](/api/realtime/connect) - Initial connection with prompt
+- [Events](/api/realtime/events) - Monitor connection state changes

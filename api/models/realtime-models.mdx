@@ -1,0 +1,252 @@
+---
+title: "Real-time Models"
+description: "Real-time video streaming models for WebRTC-based generation"
+---
+
+Real-time models provide low-latency video streaming using WebRTC. These models are optimized for interactive applications requiring immediate feedback.
+
+## Available Models
+
+<CardGroup cols={2}>
+  <Card title="mirage" icon="video">
+    Real-time video restyling model
+  </Card>
+  <Card title="mirage_v2" icon="video">
+    Real-time video restyling model (v2)
+  </Card>
+  <Card title="lucy_v2v_720p_rt" icon="wand-magic-sparkles">
+    Real-time video editing model
+  </Card>
+  <Card title="lucy_2_rt" icon="wand-magic-sparkles">
+    Real-time video editing with reference image support
+  </Card>
+  <Card title="live_avatar" icon="user">
+    Real-time avatar generation
+  </Card>
+</CardGroup>
+
+## Model Specifications
+
+| Model | FPS | Resolution | Description |
+|-------|-----|------------|-------------|
+| `mirage` | 25 | 1280x704 | Real-time video restyling |
+| `mirage_v2` | 22 | 1280x704 | Real-time video restyling (v2) |
+| `lucy_v2v_720p_rt` | 25 | 1280x704 | Real-time video editing |
+| `lucy_2_rt` | 20 | 1280x720 | Real-time video editing with reference image |
+| `live_avatar` | 25 | 1280x720 | Real-time avatar generation |
+
+## Usage
+
+### Accessing Models
+
+Use the `models.realtime()` factory function to access real-time model definitions:
+
+```typescript
+import { models } from '@decart-ai/sdk';
+
+const mirageModel = models.realtime('mirage');
+const mirageV2Model = models.realtime('mirage_v2');
+const lucyV2VModel = models.realtime('lucy_v2v_720p_rt');
+const lucy2Model = models.realtime('lucy_2_rt');
+const avatarModel = models.realtime('live_avatar');
+```
+
+### Model Definition Properties
+
+Each model definition includes:
+
+```typescript
+interface ModelDefinition {
+  name: string;           // Model identifier
+  urlPath: string;        // API endpoint path
+  fps: number;            // Frames per second
+  width: number;          // Video width in pixels
+  height: number;         // Video height in pixels
+  inputSchema: ZodObject; // Input validation schema
+}
+```
+
+### Creating a Real-time Client
+
+Real-time models require the `createRealtimeClient` for WebRTC streaming:
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: 'your-api-key',
+});
+
+const realtimeClient = client.realtime({
+  model: models.realtime('mirage'),
+});
+
+// Listen for video frames
+realtimeClient.on('frame', (frame) => {
+  console.log('Received frame:', frame);
+});
+
+// Start streaming
+await realtimeClient.connect();
+```
+
+## Input Requirements
+
+Real-time models accept streaming video input via WebRTC. No additional parameters are required in the input schema.
+
+### Connection Options
+
+```typescript
+interface RealtimeOptions {
+  model: ModelDefinition<RealTimeModels>;
+  onFrame?: (frame: VideoFrame) => void;
+  onError?: (error: Error) => void;
+}
+```
+
+## Examples
+
+### Basic Real-time Streaming
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const realtimeClient = client.realtime({
+  model: models.realtime('mirage_v2'),
+});
+
+// Handle incoming frames
+realtimeClient.on('frame', (frame) => {
+  // Render frame to canvas or video element
+  displayFrame(frame);
+});
+
+// Handle errors
+realtimeClient.on('error', (error) => {
+  console.error('Streaming error:', error);
+});
+
+// Connect and start streaming
+await realtimeClient.connect();
+
+// Send input frames
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+realtimeClient.sendStream(stream);
+
+// Disconnect when done
+await realtimeClient.disconnect();
+```
+
+### Using Lucy 2 RT with Reference Image
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const realtimeClient = client.realtime({
+  model: models.realtime('lucy_2_rt'),
+});
+
+// Set reference image for styling
+await realtimeClient.setReferenceImage(referenceImageFile);
+
+// Start streaming
+await realtimeClient.connect();
+
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+realtimeClient.sendStream(stream);
+```
+
+### Live Avatar Generation
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+const avatarClient = client.realtime({
+  model: models.realtime('live_avatar'),
+});
+
+avatarClient.on('frame', (frame) => {
+  // Display avatar frame
+  renderAvatar(frame);
+});
+
+await avatarClient.connect();
+
+// Send audio and video input for avatar generation
+const stream = await navigator.mediaDevices.getUserMedia({ 
+  video: true, 
+  audio: true 
+});
+avatarClient.sendStream(stream);
+```
+
+## Type Definitions
+
+```typescript
+type RealTimeModels = 
+  | "mirage" 
+  | "mirage_v2" 
+  | "lucy_v2v_720p_rt" 
+  | "lucy_2_rt" 
+  | "live_avatar";
+
+function models.realtime<T extends RealTimeModels>(
+  model: T
+): ModelDefinition<T>;
+```
+
+## Performance Considerations
+
+- **Latency**: Real-time models prioritize low latency over quality
+- **FPS**: Different models run at different frame rates (20-25 FPS)
+- **Resolution**: All models output at 720p or similar resolutions
+- **Network**: Requires stable, low-latency network connection for WebRTC
+- **Browser Support**: Requires WebRTC support (modern browsers only)
+
+## Error Handling
+
+```typescript
+realtimeClient.on('error', (error) => {
+  if (error.code === 'CONNECTION_FAILED') {
+    // Handle connection failure
+    console.error('Failed to establish WebRTC connection');
+  } else if (error.code === 'STREAM_ERROR') {
+    // Handle streaming error
+    console.error('Error during streaming:', error.message);
+  }
+});
+
+realtimeClient.on('connectionStateChange', (state) => {
+  console.log('Connection state:', state);
+  // States: 'connecting', 'connected', 'disconnected', 'failed'
+});
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Video Models" href="/api/models/video-models" icon="film">
+    Async video generation models
+  </Card>
+  <Card title="Image Models" href="/api/models/image-models" icon="image">
+    Image generation models
+  </Card>
+  <Card title="Realtime Client" href="/api/realtime/connect" icon="bolt">
+    Real-time client API reference
+  </Card>
+  <Card title="WebRTC Guide" href="/guides/realtime-streaming" icon="signal">
+    Real-time streaming guide
+  </Card>
+</CardGroup>

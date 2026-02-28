@@ -1,0 +1,243 @@
+---
+title: 'DecartClient'
+description: 'Understanding the Decart SDK client structure and initialization'
+---
+
+## Overview
+
+The Decart SDK provides a unified client interface through the `createDecartClient` factory function. This client gives you access to four specialized sub-clients for different use cases:
+
+- **realtime** - WebRTC-based real-time video streaming
+- **process** - Synchronous image generation
+- **queue** - Asynchronous video generation with job management
+- **tokens** - Client token generation for secure client-side usage
+
+## Creating a Client
+
+The SDK supports two modes of operation: **direct API mode** and **proxy mode**.
+
+### Direct API Mode
+
+In direct API mode, the client communicates directly with the Decart API using your API key.
+
+```typescript
+import { createDecartClient } from '@decart-ai/sdk';
+
+// Option 1: Explicit API key
+const client = createDecartClient({ 
+  apiKey: 'your-api-key' 
+});
+
+// Option 2: Using DECART_API_KEY environment variable
+const client = createDecartClient();
+```
+
+### Proxy Mode
+
+In proxy mode, requests are routed through your server proxy, eliminating the need to expose your API key on the client side.
+
+```typescript
+// Proxy mode (client-side, no API key needed)
+const client = createDecartClient({ 
+  proxy: 'https://your-server.com/api/decart' 
+});
+
+// Or use a relative path
+const client = createDecartClient({ 
+  proxy: '/api/decart' 
+});
+```
+
+<Note>
+You cannot provide both `proxy` and `apiKey` - they are mutually exclusive.
+</Note>
+
+## Client Configuration
+
+### TypeScript Signature
+
+```typescript
+type DecartClientOptions =
+  | {
+      proxy: string;
+      apiKey?: never;
+      baseUrl?: string;
+      realtimeBaseUrl?: string;
+      integration?: string;
+      logger?: Logger;
+      telemetry?: boolean;
+    }
+  | {
+      proxy?: never;
+      apiKey?: string;
+      baseUrl?: string;
+      realtimeBaseUrl?: string;
+      integration?: string;
+      logger?: Logger;
+      telemetry?: boolean;
+    };
+
+function createDecartClient(options?: DecartClientOptions): {
+  realtime: RealTimeClient;
+  process: ProcessClient;
+  queue: QueueClient;
+  tokens: TokensClient;
+}
+```
+
+### Configuration Options
+
+<ParamField path="apiKey" type="string">
+  API key for authentication. Required unless using `proxy` mode or the `DECART_API_KEY` environment variable.
+</ParamField>
+
+<ParamField path="proxy" type="string">
+  URL of the proxy server. When set, the client uses the proxy instead of direct API access and `apiKey` is not required. Can be a full URL or a relative path (starting with `/`).
+</ParamField>
+
+<ParamField path="baseUrl" type="string" default="https://api.decart.ai">
+  Override the default API base URL.
+</ParamField>
+
+<ParamField path="realtimeBaseUrl" type="string" default="wss://api3.decart.ai">
+  Override the default WebSocket base URL for realtime connections.
+</ParamField>
+
+<ParamField path="integration" type="string">
+  Optional integration identifier for tracking and analytics.
+</ParamField>
+
+<ParamField path="logger" type="Logger">
+  Custom logger for debugging and diagnostics. Use `createConsoleLogger()` for console output or `noopLogger` to disable logging.
+</ParamField>
+
+<ParamField path="telemetry" type="boolean" default="true">
+  Enable or disable telemetry data collection.
+</ParamField>
+
+## The Four Clients
+
+### Realtime Client
+
+For WebRTC-based real-time video streaming with interactive models.
+
+```typescript
+const stream = await client.realtime.connect({
+  model: models.realtime('mirage'),
+  onRemoteStream: (stream) => {
+    videoElement.srcObject = stream;
+  }
+});
+```
+
+<Note>
+The realtime client **always requires direct API access** with an API key, even in proxy mode. WebRTC connections cannot be proxied through HTTP.
+</Note>
+
+<Card title="Learn More" icon="video" href="/guides/realtime">
+  See the Realtime Guide for complete usage examples
+</Card>
+
+### Process Client
+
+For synchronous image generation. Only image models (`lucy-pro-t2i`, `lucy-pro-i2i`) support the process API.
+
+```typescript
+const blob = await client.process({
+  model: models.image('lucy-pro-t2i'),
+  prompt: 'A beautiful sunset over the ocean'
+});
+
+const imageUrl = URL.createObjectURL(blob);
+```
+
+<Card title="Learn More" icon="image" href="/guides/process">
+  See the Process Guide for complete usage examples
+</Card>
+
+### Queue Client
+
+For asynchronous video generation with job management. Only video models support the queue API.
+
+```typescript
+// Submit and poll automatically
+const result = await client.queue.submitAndPoll({
+  model: models.video('lucy-pro-t2v'),
+  prompt: 'A beautiful sunset over the ocean',
+  onStatusChange: (job) => {
+    console.log(`Job ${job.job_id}: ${job.status}`);
+  }
+});
+
+if (result.status === 'completed') {
+  const videoUrl = URL.createObjectURL(result.data);
+}
+```
+
+The queue client provides three methods:
+
+- `submit()` - Submit a job and get the job ID
+- `status()` - Check the status of a job
+- `result()` - Get the result of a completed job
+- `submitAndPoll()` - Submit and automatically poll until completion
+
+<Card title="Learn More" icon="list" href="/guides/queue">
+  See the Queue Guide for complete usage examples
+</Card>
+
+### Tokens Client
+
+For creating short-lived client tokens that are safe to use on the client side.
+
+```typescript
+// Server-side: Create a client token
+const serverClient = createDecartClient({ 
+  apiKey: process.env.DECART_API_KEY 
+});
+const token = await serverClient.tokens.create();
+// Returns: { apiKey: 'ek_...', expiresAt: '2024-12-15T12:10:00Z' }
+
+// Client-side: Use the client token
+const client = createDecartClient({ apiKey: token.apiKey });
+```
+
+<Card title="Learn More" icon="key" href="/concepts/authentication">
+  See Authentication for security best practices
+</Card>
+
+## Custom Logging
+
+You can provide a custom logger for debugging and diagnostics:
+
+```typescript
+import { createConsoleLogger } from '@decart-ai/sdk';
+
+const client = createDecartClient({
+  apiKey: 'your-api-key',
+  logger: createConsoleLogger({ level: 'debug' })
+});
+```
+
+Log levels: `debug`, `info`, `warn`, `error`
+
+## Error Handling
+
+All SDK methods can throw `DecartSDKError` with specific error codes:
+
+```typescript
+import { createDecartClient, ERROR_CODES } from '@decart-ai/sdk';
+
+try {
+  const client = createDecartClient({ apiKey: '' });
+} catch (error) {
+  if (error.code === ERROR_CODES.INVALID_API_KEY) {
+    console.error('Invalid API key provided');
+  }
+}
+```
+
+Common error codes:
+- `INVALID_API_KEY` - API key is missing or invalid
+- `INVALID_BASE_URL` - Base URL format is invalid
+- `INVALID_INPUT` - Model inputs failed validation
+- `TOKEN_CREATE_ERROR` - Failed to create client token

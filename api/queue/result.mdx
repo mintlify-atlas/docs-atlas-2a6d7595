@@ -1,0 +1,293 @@
+---
+title: "result()"
+description: "Retrieve the result of a completed queue job"
+---
+
+## Method Signature
+
+```typescript
+result(jobId: string): Promise<Blob>
+```
+
+Get the result of a completed job. Should only be called when job status is `"completed"`.
+
+## Parameters
+
+<ParamField path="jobId" type="string" required>
+  The unique job identifier returned from `submit()`. The job must have a status of `"completed"`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="Promise<Blob>" type="Blob">
+  Promise that resolves with the generated video as a Blob. Can be used with `URL.createObjectURL()` for playback or download.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { createDecartClient, models } from "@decart-ai/decart";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit and wait for completion
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano"
+});
+
+// Poll until complete (manual approach)
+let status;
+do {
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  status = await client.queue.status(job.job_id);
+} while (status.status !== "completed" && status.status !== "failed");
+
+if (status.status === "completed") {
+  // Retrieve the result
+  const blob = await client.queue.result(job.job_id);
+  
+  // Display in video element
+  const videoUrl = URL.createObjectURL(blob);
+  videoElement.src = videoUrl;
+}
+```
+
+### Display Video in Browser
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful sunset over the ocean"
+});
+
+// Wait for completion (using submitAndPoll would be easier)
+const finalStatus = await waitForCompletion(job.job_id);
+
+if (finalStatus.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  
+  // Create object URL for video element
+  const videoUrl = URL.createObjectURL(blob);
+  const videoElement = document.querySelector("video");
+  videoElement.src = videoUrl;
+  
+  // Clean up URL when done
+  videoElement.onloadeddata = () => {
+    console.log("Video ready to play");
+  };
+}
+```
+
+### Download Video File
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-i2v"),
+  prompt: "Animate with motion",
+  data: imageFile
+});
+
+const finalStatus = await waitForCompletion(job.job_id);
+
+if (finalStatus.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  
+  // Trigger download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `generated-video-${job.job_id}.mp4`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+```
+
+### Save to File System (Node.js)
+
+```typescript
+import { writeFile } from "fs/promises";
+import { Buffer } from "buffer";
+
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A serene mountain landscape"
+});
+
+const finalStatus = await waitForCompletion(job.job_id);
+
+if (finalStatus.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  
+  // Convert Blob to Buffer and save
+  const arrayBuffer = await blob.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  
+  await writeFile(`./output-${job.job_id}.mp4`, buffer);
+  console.log("Video saved to disk");
+}
+```
+
+### Upload to Storage
+
+```typescript
+// Example: Upload to AWS S3
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const s3Client = new S3Client({ region: "us-east-1" });
+
+const job = await client.queue.submit({
+  model: models.video("lucy-restyle-v2v"),
+  prompt: "Convert to anime style",
+  data: inputVideoUrl
+});
+
+const finalStatus = await waitForCompletion(job.job_id);
+
+if (finalStatus.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  const buffer = Buffer.from(await blob.arrayBuffer());
+  
+  await s3Client.send(new PutObjectCommand({
+    Bucket: "my-videos",
+    Key: `generated/${job.job_id}.mp4`,
+    Body: buffer,
+    ContentType: "video/mp4"
+  }));
+  
+  console.log("Video uploaded to S3");
+}
+```
+
+### Get Blob Metadata
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano"
+});
+
+const finalStatus = await waitForCompletion(job.job_id);
+
+if (finalStatus.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  
+  console.log("Blob details:");
+  console.log("  Size:", blob.size, "bytes");
+  console.log("  Type:", blob.type);
+  console.log("  Size (MB):", (blob.size / 1024 / 1024).toFixed(2));
+}
+```
+
+### With Error Handling
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A beautiful landscape"
+});
+
+try {
+  // Wait for completion
+  let status;
+  do {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    status = await client.queue.status(job.job_id);
+  } while (status.status === "pending" || status.status === "processing");
+  
+  if (status.status === "completed") {
+    const blob = await client.queue.result(job.job_id);
+    displayVideo(blob);
+  } else {
+    console.error("Job failed during processing");
+  }
+} catch (error) {
+  if (error.code === "NOT_FOUND") {
+    console.error("Job not found or result expired");
+  } else if (error.code === "INVALID_STATUS") {
+    console.error("Job is not completed yet");
+  } else if (error.code === "NETWORK_ERROR") {
+    console.error("Network error:", error.message);
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+### Process Video Frames
+
+```typescript
+const job = await client.queue.submit({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A flowing river"
+});
+
+const finalStatus = await waitForCompletion(job.job_id);
+
+if (finalStatus.status === "completed") {
+  const blob = await client.queue.result(job.job_id);
+  
+  // Create video element to extract frames
+  const video = document.createElement("video");
+  video.src = URL.createObjectURL(blob);
+  
+  video.onloadedmetadata = () => {
+    console.log(`Video duration: ${video.duration} seconds`);
+    console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`);
+    
+    // Process frames using canvas
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    
+    video.currentTime = 0;
+    video.onseeked = () => {
+      ctx.drawImage(video, 0, 0);
+      const frameData = canvas.toDataURL("image/png");
+      console.log("First frame extracted");
+    };
+  };
+}
+```
+
+## Error Handling
+
+```typescript
+try {
+  const blob = await client.queue.result(jobId);
+  processVideo(blob);
+} catch (error) {
+  if (error.code === "NOT_FOUND") {
+    console.error("Job not found. It may have been deleted or expired.");
+  } else if (error.code === "INVALID_STATUS") {
+    console.error("Job is not completed yet. Check status first.");
+  } else if (error.code === "NETWORK_ERROR") {
+    console.error("Failed to download result:", error.message);
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+## Notes
+
+- Only call this method when the job status is `"completed"`. Calling it for jobs with other statuses may result in an error.
+- Always check the job status using `client.queue.status()` before calling `result()`.
+- For a simpler workflow, use `client.queue.submitAndPoll()` which handles status checking and result retrieval automatically.
+- Results may expire after a certain period. Always retrieve results promptly after completion.
+- The returned Blob can be used directly with `URL.createObjectURL()` for playback in the browser.
+- In Node.js environments, convert the Blob to a Buffer using `Buffer.from(await blob.arrayBuffer())` for file system operations.
+- Remember to revoke object URLs with `URL.revokeObjectURL()` when done to free memory.
+
+## See Also
+
+- [submit()](/api/queue/submit) - Submit a job
+- [submitAndPoll()](/api/queue/submit-and-poll) - Submit and wait for completion
+- [status()](/api/queue/status) - Check job status

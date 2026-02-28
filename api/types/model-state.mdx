@@ -1,0 +1,126 @@
+---
+title: ModelState
+description: Type reference for ModelState configuration
+---
+
+The `ModelState` type defines the configuration state for real-time models, including prompt and image inputs.
+
+## Type Definition
+
+```typescript
+type ModelState = {
+  prompt?: {
+    text: string;
+    enhance?: boolean;
+  };
+  image?: Blob | File | string;
+};
+```
+
+## Fields
+
+### `prompt`
+
+<ParamField path="prompt" type="object" optional>
+  The text prompt configuration for the model.
+  
+  <Expandable title="properties">
+    <ParamField path="text" type="string" required>
+      The prompt text to send to the model. Must be at least 1 character long.
+    </ParamField>
+    
+    <ParamField path="enhance" type="boolean" default="true">
+      Whether to enhance the prompt using AI. Defaults to `true`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### `image`
+
+<ParamField path="image" type="Blob | File | string" optional>
+  Reference image input for models that support image conditioning. Can be:
+  - `Blob` - Binary image data
+  - `File` - File object from file input
+  - `string` - Base64-encoded image data or URL
+</ParamField>
+
+## Usage Examples
+
+### With Prompt Only
+
+```typescript
+import { createDecartClient, models } from '@decart-ai/sdk';
+
+const client = createDecartClient({ apiKey: 'your-api-key' });
+
+const state: ModelState = {
+  prompt: {
+    text: 'A serene mountain landscape',
+    enhance: true
+  }
+};
+
+await client.realtime.connect({
+  model: models.realtime('mirage'),
+  state
+});
+```
+
+### With Image Reference
+
+```typescript
+const imageFile = document.getElementById('upload').files[0];
+
+const state: ModelState = {
+  prompt: {
+    text: 'Transform this into a watercolor painting',
+    enhance: false
+  },
+  image: imageFile
+};
+
+await client.realtime.connect({
+  model: models.realtime('lucy_2_rt'),
+  state
+});
+```
+
+### With Base64 Image
+
+```typescript
+const state: ModelState = {
+  image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...'
+};
+
+await client.realtime.connect({
+  model: models.realtime('lucy_2_rt'),
+  state
+});
+```
+
+## Related Methods
+
+- [connect()](/api/realtime/connect) - Initialize real-time connection with ModelState
+- [setImage()](/api/realtime/set-state) - Update image during active session
+- [sendPrompt()](/api/realtime/set-prompt) - Send new prompt during active session
+
+## Validation
+
+The SDK validates `ModelState` using a Zod schema at runtime:
+
+```typescript
+import { modelStateSchema } from '@decart-ai/sdk';
+
+// Validate state before use
+const result = modelStateSchema.safeParse(state);
+if (!result.success) {
+  console.error(result.error);
+}
+```
+
+## Notes
+
+- The `prompt.text` field must be at least 1 character when provided
+- Prompt enhancement is enabled by default to improve generation quality
+- Not all real-time models support image inputs - check model capabilities
+- Image data is automatically converted to the appropriate format for the API

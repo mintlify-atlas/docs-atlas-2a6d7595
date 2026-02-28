@@ -1,0 +1,205 @@
+---
+title: Installation
+description: Install the Decart AI SDK in your JavaScript or TypeScript project
+---
+
+# Installation
+
+The Decart AI SDK is available on npm as `@decartai/sdk` and can be installed using your preferred package manager.
+
+## Package Manager Installation
+
+Choose your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install @decartai/sdk
+```
+
+```bash pnpm
+pnpm add @decartai/sdk
+```
+
+```bash yarn
+yarn add @decartai/sdk
+```
+</CodeGroup>
+
+## Requirements
+
+- **Node.js**: Version 16 or higher
+- **Package Type**: ESM (ES Modules)
+- **Browser Support**: Modern browsers with WebRTC support (for real-time API)
+
+<Note>
+The SDK is built as an ESM-only package with platform-neutral builds for optimal tree-shaking and compatibility.
+</Note>
+
+## TypeScript Support
+
+The SDK is written in TypeScript and includes full type definitions out of the box. No additional `@types` packages are needed.
+
+```typescript
+import { createDecartClient, models } from "@decartai/sdk";
+import type { RealTimeClient, QueueClient, ProcessClient } from "@decartai/sdk";
+```
+
+### TypeScript Configuration
+
+For optimal TypeScript support, ensure your `tsconfig.json` includes:
+
+```json
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"]
+  }
+}
+```
+
+## API Key Setup
+
+After installation, you'll need an API key to authenticate requests.
+
+<Steps>
+  <Step title="Get your API key">
+    Sign up at [Decart Platform](https://platform.decart.ai) and generate an API key from your dashboard.
+  </Step>
+  
+  <Step title="Set environment variable (recommended)">
+    For server-side applications, store your API key in an environment variable:
+    
+    ```bash
+    export DECART_API_KEY="your-api-key-here"
+    ```
+    
+    Or add it to your `.env` file:
+    
+    ```bash .env
+    DECART_API_KEY=your-api-key-here
+    ```
+  </Step>
+  
+  <Step title="Initialize the client">
+    The SDK will automatically read the `DECART_API_KEY` environment variable:
+    
+    ```typescript
+    import { createDecartClient } from "@decartai/sdk";
+    
+    // Automatically uses DECART_API_KEY environment variable
+    const client = createDecartClient();
+    
+    // Or explicitly pass the API key
+    const client = createDecartClient({ 
+      apiKey: process.env.DECART_API_KEY 
+    });
+    ```
+  </Step>
+</Steps>
+
+## Client-Side Usage (Proxy Mode)
+
+For client-side applications, it's recommended to use proxy mode to avoid exposing your API key:
+
+<Tip>
+**Why use proxy mode?**
+
+Exposing your API key in client-side code is a security risk. Proxy mode allows you to route requests through your own server while keeping your API key secure.
+</Tip>
+
+<Steps>
+  <Step title="Set up a server endpoint">
+    Create a server endpoint that forwards requests to Decart API:
+    
+    ```typescript
+    // Example: Next.js API route
+    export async function POST(request: Request) {
+      const body = await request.json();
+      
+      const response = await fetch(`https://api.decart.ai${request.url}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.DECART_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      
+      return response;
+    }
+    ```
+  </Step>
+  
+  <Step title="Initialize client with proxy">
+    Configure the SDK to use your proxy endpoint:
+    
+    ```typescript
+    import { createDecartClient } from "@decartai/sdk";
+    
+    const client = createDecartClient({ 
+      proxy: "https://your-server.com/api/decart" 
+    });
+    ```
+  </Step>
+</Steps>
+
+<Note>
+**Important:** The Real-time (WebRTC) API always requires direct API access and cannot use proxy mode. For client-side real-time applications, use [client tokens](/api/tokens/create) instead.
+</Note>
+
+## Client Tokens (Real-time API)
+
+For client-side applications using the Real-time API, create short-lived client tokens:
+
+```typescript
+// Server-side: Create a client token
+const serverClient = createDecartClient({ 
+  apiKey: process.env.DECART_API_KEY 
+});
+const token = await serverClient.tokens.create();
+// Returns: { apiKey: "ek_...", expiresAt: "2026-03-01T12:00:00Z" }
+
+// Client-side: Use the client token
+const client = createDecartClient({ apiKey: token.apiKey });
+const realtimeClient = await client.realtime.connect(stream, options);
+```
+
+## Peer Dependencies
+
+The SDK has minimal runtime dependencies:
+
+- `mitt` - Typed event emitter for real-time events
+- `p-retry` - Resilient retry logic for network requests
+- `zod` - Runtime validation of API inputs
+
+These are automatically installed as part of the SDK package.
+
+## Verification
+
+Verify your installation by checking the SDK version:
+
+```bash
+npm list @decartai/sdk
+```
+
+Or import and use it in your code:
+
+```typescript
+import { createDecartClient, models } from "@decartai/sdk";
+
+console.log(models.video("lucy-pro-t2v"));
+// Output: { name: 'lucy-pro-t2v', urlPath: '/v1/generate/lucy-pro-t2v', ... }
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first application with real-time video transformation
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

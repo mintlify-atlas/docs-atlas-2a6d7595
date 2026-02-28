@@ -1,0 +1,89 @@
+---
+title: 'Queue API Overview'
+description: 'Learn how to use async job-based processing for video generation'
+---
+
+The Queue API enables asynchronous video generation for models that require longer processing times. Instead of waiting for a synchronous response, you submit a job and poll for completion.
+
+## When to Use Queue API
+
+The Queue API is designed for video generation models that take longer to process. All video models in the Decart SDK support the queue-based workflow.
+
+### Supported Video Models
+
+- **`lucy-pro-t2v`** - Text-to-video (Pro quality)
+- **`lucy-pro-i2v`** - Image-to-video (Pro quality)
+- **`lucy-pro-v2v`** - Video-to-video (Pro quality)
+- **`lucy-pro-flf2v`** - First-last-frame-to-video (Pro quality)
+- **`lucy-dev-i2v`** - Image-to-video (Dev quality)
+- **`lucy-fast-v2v`** - Video-to-video (Fast quality)
+- **`lucy-motion`** - Motion-based image-to-video (trajectory-guided animation)
+- **`lucy-restyle-v2v`** - Video restyling (video-to-video)
+
+## Queue Workflow
+
+The queue-based processing follows a simple three-step flow:
+
+1. **Submit** - Submit your job to the queue and receive a `job_id`
+2. **Poll** - Check the job status periodically until completion
+3. **Retrieve** - Download the generated video when the job completes
+
+### Automatic vs Manual Polling
+
+The SDK provides two approaches:
+
+- **Automatic**: Use `client.queue.submitAndPoll()` to submit and wait for completion in one call
+- **Manual**: Use `client.queue.submit()`, then manually check status with `client.queue.status()` and retrieve results with `client.queue.result()`
+
+## Basic Example
+
+Here's a complete example using automatic polling:
+
+```typescript
+import { createDecartClient, models } from "@decart/sdk";
+
+const client = createDecartClient({
+  apiKey: process.env.DECART_API_KEY,
+});
+
+// Submit and automatically poll until completion
+const result = await client.queue.submitAndPoll({
+  model: models.video("lucy-pro-t2v"),
+  prompt: "A cat playing piano in a cozy living room",
+  onStatusChange: (job) => {
+    console.log(`Job ${job.job_id}: ${job.status}`);
+  },
+});
+
+if (result.status === "completed") {
+  // Save the video blob
+  const arrayBuffer = await result.data.arrayBuffer();
+  await fs.writeFile("output.mp4", Buffer.from(arrayBuffer));
+  console.log("Video saved!");
+} else {
+  console.error("Job failed:", result.error);
+}
+```
+
+## Job Lifecycle
+
+A job progresses through these states:
+
+1. **`pending`** - Job is queued and waiting to start
+2. **`processing`** - Job is actively being processed
+3. **`completed`** - Job finished successfully, result is ready
+4. **`failed`** - Job failed, error message available
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Submit Jobs" icon="paper-plane" href="/queue/submit">
+    Learn how to submit jobs for different model types
+  </Card>
+  <Card title="Polling" icon="arrows-rotate" href="/queue/polling">
+    Understand automatic and manual polling strategies
+  </Card>
+  <Card title="Status & Errors" icon="circle-info" href="/queue/status">
+    Handle job status and error cases
+  </Card>
+</CardGroup>
