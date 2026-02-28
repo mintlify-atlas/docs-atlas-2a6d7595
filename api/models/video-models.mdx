@@ -54,7 +54,7 @@ Video models provide high-quality video generation through the queue API. These 
 Use the `models.video()` factory function to access video model definitions:
 
 ```typescript
-import { models } from '@decart-ai/sdk';
+import { models } from '@decartai/sdk';
 
 const t2vModel = models.video('lucy-pro-t2v');
 const i2vModel = models.video('lucy-pro-i2v');
@@ -329,7 +329,7 @@ type FileInput =
 Video models use the queue API for asynchronous processing:
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,

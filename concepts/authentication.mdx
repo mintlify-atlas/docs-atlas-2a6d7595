@@ -36,7 +36,7 @@ There are two ways to provide your API key:
     Then create the client without explicitly passing the key:
 
     ```typescript
-    import { createDecartClient } from '@decart-ai/sdk';
+    import { createDecartClient } from '@decartai/sdk';
 
     const client = createDecartClient();
     ```
@@ -46,7 +46,7 @@ There are two ways to provide your API key:
     Pass the API key directly when creating the client:
 
     ```typescript
-    import { createDecartClient } from '@decart-ai/sdk';
+    import { createDecartClient } from '@decartai/sdk';
 
     const client = createDecartClient({ 
       apiKey: 'your-api-key' 
@@ -75,7 +75,7 @@ Client tokens are short-lived API keys designed for secure client-side usage. Th
 Client tokens are created server-side using the `tokens.create()` method:
 
 ```typescript title="server.ts"
-import { createDecartClient } from '@decart-ai/sdk';
+import { createDecartClient } from '@decartai/sdk';
 
 // Server-side: Create client with your API key
 const serverClient = createDecartClient({ 
@@ -114,7 +114,7 @@ type TokensClient = {
 Once created, send the client token to your client application:
 
 ```typescript title="client.ts"
-import { createDecartClient } from '@decart-ai/sdk';
+import { createDecartClient } from '@decartai/sdk';
 
 // Fetch token from your server
 const response = await fetch('/api/tokens');
@@ -149,7 +149,7 @@ const token = await serverClient.tokens.create({
 ### Full Example: Next.js API Route
 
 ```typescript title="app/api/tokens/route.ts"
-import { createDecartClient } from '@decart-ai/sdk';
+import { createDecartClient } from '@decartai/sdk';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -181,7 +181,7 @@ export async function POST(request: Request) {
 ```typescript title="components/VideoGenerator.tsx"
 'use client';
 
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 import { useEffect, useRef } from 'react';
 
 export function VideoGenerator() {
@@ -230,7 +230,7 @@ Proxy mode routes all HTTP requests through your server, eliminating the need to
 Create a server endpoint that forwards requests to Decart:
 
 ```typescript title="app/api/decart/[...path]/route.ts"
-import { createDecartClient } from '@decart-ai/sdk';
+import { createDecartClient } from '@decartai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
 const serverClient = createDecartClient({ 
@@ -268,7 +268,7 @@ export async function POST(
 On the client side, create the client in proxy mode:
 
 ```typescript title="client.ts"
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 // Full URL
 const client = createDecartClient({ 
@@ -350,7 +350,7 @@ await client.realtime.connect({ /* ... */ });  // ✅ Works
 Handle authentication errors appropriately:
 
 ```typescript
-import { createDecartClient, ERROR_CODES } from '@decart-ai/sdk';
+import { createDecartClient, ERROR_CODES } from '@decartai/sdk';
 
 try {
   const client = createDecartClient({ apiKey: 'invalid' });

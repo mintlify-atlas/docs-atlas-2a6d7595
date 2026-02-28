@@ -21,7 +21,7 @@ The SDK supports two modes of operation: **direct API mode** and **proxy mode**.
 In direct API mode, the client communicates directly with the Decart API using your API key.
 
 ```typescript
-import { createDecartClient } from '@decart-ai/sdk';
+import { createDecartClient } from '@decartai/sdk';
 
 // Option 1: Explicit API key
 const client = createDecartClient({ 
@@ -210,7 +210,7 @@ const client = createDecartClient({ apiKey: token.apiKey });
 You can provide a custom logger for debugging and diagnostics:
 
 ```typescript
-import { createConsoleLogger } from '@decart-ai/sdk';
+import { createConsoleLogger } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: 'your-api-key',
@@ -225,7 +225,7 @@ Log levels: `debug`, `info`, `warn`, `error`
 All SDK methods can throw `DecartSDKError` with specific error codes:
 
 ```typescript
-import { createDecartClient, ERROR_CODES } from '@decart-ai/sdk';
+import { createDecartClient, ERROR_CODES } from '@decartai/sdk';
 
 try {
   const client = createDecartClient({ apiKey: '' });

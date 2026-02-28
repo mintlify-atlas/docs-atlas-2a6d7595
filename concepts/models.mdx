@@ -18,7 +18,7 @@ Each model comes with a complete definition including resolution, frame rate, an
 The SDK exports a `models` object with three factory functions:
 
 ```typescript
-import { models } from '@decart-ai/sdk';
+import { models } from '@decartai/sdk';
 
 // Get a realtime model definition
 const realtimeModel = models.realtime('mirage');
@@ -110,7 +110,7 @@ Realtime models use WebRTC for low-latency interactive video streaming.
 ### Usage with Realtime Client
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({ apiKey: 'your-api-key' });
 
@@ -190,7 +190,7 @@ Video models use the queue API for asynchronous video generation.
 ### Usage with Queue Client
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({ apiKey: 'your-api-key' });
 
@@ -229,7 +229,7 @@ Image models use the process API for synchronous image generation.
 ### Usage with Process Client
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({ apiKey: 'your-api-key' });
 
@@ -248,7 +248,7 @@ const imageUrl = URL.createObjectURL(blob);
 The SDK provides type guard functions to check model types:
 
 ```typescript
-import { isRealtimeModel, isVideoModel, isImageModel } from '@decart-ai/sdk';
+import { isRealtimeModel, isVideoModel, isImageModel } from '@decartai/sdk';
 
 const modelName = 'lucy-pro-t2v';
 
@@ -317,7 +317,7 @@ await client.queue.submit({
 You can provide custom model configurations:
 
 ```typescript
-import type { CustomModelDefinition } from '@decart-ai/sdk';
+import type { CustomModelDefinition } from '@decartai/sdk';
 
 const customModel: CustomModelDefinition = {
   name: 'my-custom-model',

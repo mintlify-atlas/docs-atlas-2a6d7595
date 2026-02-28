@@ -30,7 +30,7 @@ Image models provide high-quality image generation through the process API. Thes
 Use the `models.image()` factory function to access image model definitions:
 
 ```typescript
-import { models } from '@decart-ai/sdk';
+import { models } from '@decartai/sdk';
 
 const t2iModel = models.image('lucy-pro-t2i');
 const i2iModel = models.image('lucy-pro-i2i');
@@ -115,7 +115,7 @@ type FileInput =
 Image models support instant synchronous processing via the process API:
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -140,7 +140,7 @@ console.log('Image URL:', result.url);
 For longer processing times or background jobs, use the queue API:
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -170,7 +170,7 @@ if (result.status === 'completed') {
 ### Text-to-Image Generation
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -194,7 +194,7 @@ const imageBlob = await fetch(imageUrl).then(r => r.blob());
 ### Image-to-Image Transformation
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -220,7 +220,7 @@ console.log('Transformed image:', result.url);
 ### Using Local Files
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 import { readFile } from 'fs/promises';
 
 const client = createDecartClient({
@@ -246,7 +246,7 @@ console.log('Result:', result.url);
 ### Batch Processing with Seeds
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -274,7 +274,7 @@ console.log('Generated variations:', variations.map(v => v.url));
 ### Using URL Inputs
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -296,7 +296,7 @@ console.log('Result:', result.url);
 ### React Native Example
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 import * as ImagePicker from 'expo-image-picker';
 
 const client = createDecartClient({
@@ -389,7 +389,7 @@ interface QueueJob {
 ## Error Handling
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,

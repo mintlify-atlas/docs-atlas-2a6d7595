@@ -42,7 +42,7 @@ Real-time models provide low-latency video streaming using WebRTC. These models 
 Use the `models.realtime()` factory function to access real-time model definitions:
 
 ```typescript
-import { models } from '@decart-ai/sdk';
+import { models } from '@decartai/sdk';
 
 const mirageModel = models.realtime('mirage');
 const mirageV2Model = models.realtime('mirage_v2');
@@ -71,7 +71,7 @@ interface ModelDefinition {
 Real-time models require the `createRealtimeClient` for WebRTC streaming:
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: 'your-api-key',
@@ -109,7 +109,7 @@ interface RealtimeOptions {
 ### Basic Real-time Streaming
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -144,7 +144,7 @@ await realtimeClient.disconnect();
 ### Using Lucy 2 RT with Reference Image
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,
@@ -167,7 +167,7 @@ realtimeClient.sendStream(stream);
 ### Live Avatar Generation
 
 ```typescript
-import { createDecartClient, models } from '@decart-ai/sdk';
+import { createDecartClient, models } from '@decartai/sdk';
 
 const client = createDecartClient({
   apiKey: process.env.DECART_API_KEY,

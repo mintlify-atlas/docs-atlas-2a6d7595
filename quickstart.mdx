@@ -1,0 +1,211 @@
+---
+title: Quickstart
+description: Get started with the Decart AI SDK in minutes
+---
+
+This guide will help you get up and running with the Decart AI SDK quickly. You'll learn how to use the three main APIs: Real-time (WebRTC), Queue (async video), and Process (sync image).
+
+## Prerequisites
+
+<Steps>
+  <Step title="Install the SDK">
+    Install the Decart AI SDK using your preferred package manager:
+
+    <CodeGroup>
+    ```bash npm
+    npm install @decartai/sdk
+    ```
+    ```bash pnpm
+    pnpm add @decartai/sdk
+    ```
+    ```bash yarn
+    yarn add @decartai/sdk
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Get your API key">
+    Sign up at [Decart Platform](https://platform.decart.ai) to get your API key. Set it as an environment variable:
+
+    ```bash
+    export DECART_API_KEY="your-api-key-here"
+    ```
+  </Step>
+</Steps>
+
+## Real-time Video Transformation
+
+Transform video streams in real-time using WebRTC. Perfect for live video effects and interactive applications.
+
+<Steps>
+  <Step title="Import the SDK">
+    ```typescript
+    import { createDecartClient, models } from "@decartai/sdk";
+    ```
+  </Step>
+
+  <Step title="Get the camera stream">
+    ```typescript
+    const model = models.realtime("mirage_v2");
+
+    // Get user's camera stream
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: { 
+        frameRate: model.fps,
+        width: model.width,
+        height: model.height,
+      }
+    });
+    ```
+  </Step>
+
+  <Step title="Create a client and connect">
+    ```typescript
+    // Create a client
+    const client = createDecartClient({
+      apiKey: "your-api-key-here"
+    });
+
+    // Connect and transform the video stream
+    const realtimeClient = await client.realtime.connect(stream, {
+      model,
+      onRemoteStream: (transformedStream) => {
+        videoElement.srcObject = transformedStream;
+      },
+      initialState: {
+        prompt: {
+          text: "Anime",
+          enhance: true
+        }
+      }
+    });
+    ```
+  </Step>
+
+  <Step title="Update the style dynamically">
+    ```typescript
+    // Change the style on the fly
+    realtimeClient.setPrompt("Cyberpunk city");
+
+    // Disconnect when done
+    realtimeClient.disconnect();
+    ```
+  </Step>
+</Steps>
+
+## Async Video Generation (Queue API)
+
+Generate videos asynchronously using the queue API. Perfect for longer video generation tasks.
+
+<Steps>
+  <Step title="Submit and poll automatically">
+    The easiest way to generate videos is using `submitAndPoll()`:
+
+    ```typescript
+    import { createDecartClient, models } from "@decartai/sdk";
+
+    const client = createDecartClient({
+      apiKey: "your-api-key-here"
+    });
+
+    // Submit and poll automatically
+    const result = await client.queue.submitAndPoll({
+      model: models.video("lucy-pro-t2v"),
+      prompt: "A cat playing piano",
+      onStatusChange: (job) => {
+        console.log(`Status: ${job.status}`);
+      }
+    });
+
+    if (result.status === "completed") {
+      videoElement.src = URL.createObjectURL(result.data);
+    } else {
+      console.error("Job failed:", result.error);
+    }
+    ```
+  </Step>
+
+  <Step title="Or manage polling manually">
+    For more control, you can manually poll for job status:
+
+    ```typescript
+    // Submit the job
+    const job = await client.queue.submit({
+      model: models.video("lucy-pro-t2v"),
+      prompt: "A cat playing piano"
+    });
+    console.log(`Job ID: ${job.job_id}`);
+
+    // Poll for status
+    const status = await client.queue.status(job.job_id);
+    console.log(`Status: ${status.status}`);
+
+    // Get result when completed
+    if (status.status === "completed") {
+      const blob = await client.queue.result(job.job_id);
+      videoElement.src = URL.createObjectURL(blob);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Synchronous Image Generation (Process API)
+
+Generate images synchronously for immediate results.
+
+<Steps>
+  <Step title="Text-to-image generation">
+    ```typescript
+    import { createDecartClient, models } from "@decartai/sdk";
+
+    const client = createDecartClient({
+      apiKey: "your-api-key-here"
+    });
+
+    // Generate an image
+    const blob = await client.process({
+      model: models.image("lucy-pro-t2i"),
+      prompt: "A beautiful sunset over the ocean",
+      resolution: "720p"
+    });
+
+    // Display the image
+    const imageUrl = URL.createObjectURL(blob);
+    imageElement.src = imageUrl;
+    ```
+  </Step>
+
+  <Step title="Image-to-image transformation">
+    ```typescript
+    // Transform an existing image
+    const blob = await client.process({
+      model: models.image("lucy-pro-i2i"),
+      prompt: "Turn this into a watercolor painting",
+      data: imageFile, // File or Blob
+      resolution: "720p"
+    });
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/client">
+    Learn about the client, models, and authentication
+  </Card>
+  <Card title="Real-time API" icon="video" href="/realtime/overview">
+    Deep dive into real-time video transformation
+  </Card>
+  <Card title="Queue API" icon="clock" href="/queue/overview">
+    Master async video generation
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/create-client">
+    Explore the complete API reference
+  </Card>
+</CardGroup>
+
+<Note>
+  For production use, consider using [proxy mode](/guides/proxy-setup) to keep your API key secure on the server side.
+</Note>
